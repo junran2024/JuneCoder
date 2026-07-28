@@ -255,7 +255,7 @@ export async function startTUI(agent, opts = {}) {
     const ctxTokens = state.tokens.prompt || estimateTokens(agent.history);
     const ctxPct = ctxTokens > 0 ? Math.round((ctxTokens / ctxWindow) * 100) : 0;
     const ctxHint = ctxPct > 0 ? (ctxPct >= 80 ? " \u2502 " + C.warn + "ctx " + ctxPct + "%" + ansi.reset + ansi.dim : " \u2502 ctx " + ctxPct + "%") : "";
-    let statusLine = statusText + taskHint + tokenHint + cacheHint + ctxHint + scrollHint + " \u2502 Enter:send Opt/Shift+Enter:newline \u2502 /:cmds \u2502 Ctrl+C:quit";
+    let statusLine = statusText + taskHint + tokenHint + cacheHint + ctxHint + scrollHint + " \u2502 Enter:send Option+Enter:newline \u2502 /:cmds \u2502 Ctrl+C:quit";
     const autoBanner = agent.autoApprove ? C.warn + "AUTO" + ansi.reset + ansi.dim + "\u2502" : "";
     const planBanner = agent.planMode ? C.tool + "PLAN" + ansi.reset + ansi.dim + "\u2502" : "";
     statusLine = sliceByWidth(statusLine, Math.max(10, W));
