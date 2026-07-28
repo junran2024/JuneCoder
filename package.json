@@ -1,0 +1,32 @@
+{
+  "name": "junecoder",
+  "version": "1.0.21",
+  "description": "Zero Npm Dependencies Agent Framework",
+  "main": "agent.mjs",
+  "type": "module",
+  "bin": {
+    "junecoder": "cli.js"
+  },
+  "files": [
+    "*.mjs",
+    "cli.js",
+    "tools/*.mjs",
+    "package.json",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test tests/test-*.test.mjs"
+  },
+  "engines": {
+    "node": ">=21.7"
+  },
+  "keywords": [
+    "agent",
+    "react",
+    "llm",
+    "coding",
+    "ai"
+  ],
+  "author": "",
+  "license": "ISC"
+}

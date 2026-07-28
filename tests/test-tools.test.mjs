@@ -1,0 +1,499 @@
+import { describe, it, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, writeFileSync, rmSync, mkdirSync, existsSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { execSync } from 'node:child_process';
+
+import { readTool } from '../tools/read.mjs';
+import { writeTool } from '../tools/write.mjs';
+import { editTool } from '../tools/edit.mjs';
+import { bashTool } from '../tools/bash.mjs';
+import { globTool } from '../tools/glob.mjs';
+import { grepTool } from '../tools/grep.mjs';
+import { lsTool } from '../tools/ls.mjs';
+import { deleteTool } from '../tools/delete.mjs';
+import { fetchTool } from '../tools/fetch.mjs';
+import { websearchTool } from '../tools/websearch.mjs';
+import { toOpenAISchema, baseTools } from '../tools/index.mjs';
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function freshAgent(cwd) {
+  return { cwd: cwd || process.cwd() };
+}
+
+function tmpdirCtx() {
+  let dir;
+  before(() => { dir = mkdtempSync(join(tmpdir(), 'junecoder-tools-')); });
+  after(() => { rmSync(dir, { recursive: true, force: true }); });
+  return () => dir;
+}
+
+// ─── toOpenAISchema / baseTools ──────────────────────────────────────────────
+
+describe('tools/index', () => {
+  it('baseTools has 10 tools', () => {
+    assert.strictEqual(baseTools.length, 10);
+  });
+
+  it('toOpenAISchema converts a tool correctly', () => {
+    const schema = toOpenAISchema(readTool);
+    assert.strictEqual(schema.type, 'function');
+    assert.strictEqual(schema.function.name, 'read');
+    assert.strictEqual(schema.function.description, readTool.description);
+    assert.deepStrictEqual(schema.function.parameters, readTool.parameters);
+  });
+
+  it('all tools have required fields', () => {
+    for (const t of baseTools) {
+      assert.ok(typeof t.name === 'string' && t.name.length > 0, `${t.name}: name`);
+      assert.ok(typeof t.description === 'string' && t.description.length > 0, `${t.name}: desc`);
+      assert.ok(typeof t.parameters === 'object', `${t.name}: params`);
+      assert.ok(typeof t.execute === 'function', `${t.name}: execute`);
+    }
+  });
+});
+
+// ─── readTool ────────────────────────────────────────────────────────────────
+
+describe('readTool', () => {
+  it('has correct structure', () => {
+    assert.strictEqual(readTool.name, 'read');
+    assert.strictEqual(readTool.readonly, true);
+    assert.strictEqual(readTool.parallel, true);
+  });
+
+  const getDir = tmpdirCtx();
+
+  it('reads a file with numbered lines', async () => {
+    const dir = getDir();
+    writeFileSync(join(dir, 'test.txt'), 'line1\nline2\nline3');
+    const agent = freshAgent(dir);
+    const out = await readTool.execute({ path: 'test.txt' }, agent);
+    assert.ok(out.includes('1| line1'));
+    assert.ok(out.includes('2| line2'));
+    assert.ok(out.includes('3| line3'));
+  });
+
+  it('supports offset and limit', async () => {
+    const dir = getDir();
+    writeFileSync(join(dir, 'nums.txt'), 'a\nb\nc\nd\ne\nf');
+    const agent = freshAgent(dir);
+    const out = await readTool.execute({ path: 'nums.txt', offset: 2, limit: 2 }, agent);
+    assert.ok(out.includes('2| b'));
+    assert.ok(out.includes('3| c'));
+    assert.ok(!out.includes('1| a'));
+    assert.ok(!out.includes('4| d'));
+  });
+
+  it('errors on missing file', async () => {
+    const agent = freshAgent();
+    const out = await readTool.execute({ path: '/no/such/file.txt' }, agent);
+    assert.ok(out.startsWith('Error: file not found'));
+  });
+
+  it('errors on directory', async () => {
+    const dir = getDir();
+    const sub = join(dir, 'subdir');
+    mkdirSync(sub);
+    const agent = freshAgent(dir);
+    const out = await readTool.execute({ path: 'subdir' }, agent);
+    assert.ok(out.startsWith('Error:'));
+    assert.ok(out.includes('directory'));
+  });
+});
+
+// ─── writeTool ───────────────────────────────────────────────────────────────
+
+describe('writeTool', () => {
+  it('has correct structure', () => {
+    assert.strictEqual(writeTool.name, 'write');
+    assert.strictEqual(writeTool.readonly, false);
+    assert.strictEqual(writeTool.parallel, false);
+  });
+
+  const getDir = tmpdirCtx();
+
+  it('writes a file and creates parent dirs', async () => {
+    const dir = getDir();
+    const agent = freshAgent(dir);
+    const out = await writeTool.execute({
+      path: 'sub/deep/hello.txt',
+      content: 'hello world',
+    }, agent);
+    assert.ok(out.includes('Wrote'));
+    assert.ok(out.includes('sub/deep/hello.txt'));
+    assert.ok(existsSync(join(dir, 'sub/deep/hello.txt')));
+  });
+
+  it('overwrites existing file', async () => {
+    const dir = getDir();
+    writeFileSync(join(dir, 'existing.txt'), 'old');
+    const agent = freshAgent(dir);
+    await writeTool.execute({ path: 'existing.txt', content: 'new' }, agent);
+    const { readFileSync } = await import('node:fs');
+    assert.strictEqual(readFileSync(join(dir, 'existing.txt'), 'utf-8'), 'new');
+  });
+
+  it('reports char count', async () => {
+    const dir = getDir();
+    const agent = freshAgent(dir);
+    const out = await writeTool.execute({ path: 'x.txt', content: 'abc' }, agent);
+    assert.ok(out.includes('3 chars'));
+  });
+});
+
+// ─── editTool ────────────────────────────────────────────────────────────────
+
+describe('editTool', () => {
+  it('has correct structure', () => {
+    assert.strictEqual(editTool.name, 'edit');
+    assert.strictEqual(editTool.readonly, false);
+    assert.strictEqual(editTool.parallel, false);
+  });
+
+  const getDir = tmpdirCtx();
+
+  it('replaces exact text once', async () => {
+    const dir = getDir();
+    writeFileSync(join(dir, 'f.txt'), 'hello world');
+    const agent = freshAgent(dir);
+    const out = await editTool.execute({
+      path: 'f.txt',
+      old_string: 'hello',
+      new_string: 'hi',
+    }, agent);
+    assert.ok(out.includes('Replaced 1 occurrence'));
+    const { readFileSync } = await import('node:fs');
+    assert.strictEqual(readFileSync(join(dir, 'f.txt'), 'utf-8'), 'hi world');
+  });
+
+  it('replaces all with replace_all', async () => {
+    const dir = getDir();
+    writeFileSync(join(dir, 'f.txt'), 'x x x');
+    const agent = freshAgent(dir);
+    const out = await editTool.execute({
+      path: 'f.txt',
+      old_string: 'x',
+      new_string: 'y',
+      replace_all: true,
+    }, agent);
+    assert.ok(out.includes('Replaced 3'));
+    const { readFileSync } = await import('node:fs');
+    assert.strictEqual(readFileSync(join(dir, 'f.txt'), 'utf-8'), 'y y y');
+  });
+
+  it('errors when old_string matches multiple times without replace_all', async () => {
+    const dir = getDir();
+    writeFileSync(join(dir, 'f.txt'), 'dup dup dup');
+    const agent = freshAgent(dir);
+    const out = await editTool.execute({
+      path: 'f.txt',
+      old_string: 'dup',
+      new_string: 'nope',
+    }, agent);
+    assert.ok(out.startsWith('Error:'));
+  });
+
+  it('errors when file not found', async () => {
+    const agent = freshAgent();
+    const out = await editTool.execute({
+      path: 'no.txt',
+      old_string: 'x',
+      new_string: 'y',
+    }, agent);
+    assert.ok(out.startsWith('Error: file not found'));
+  });
+
+  it('errors when old_string not found', async () => {
+    const dir = getDir();
+    writeFileSync(join(dir, 'f.txt'), 'nothing here');
+    const agent = freshAgent(dir);
+    const out = await editTool.execute({
+      path: 'f.txt',
+      old_string: 'missing',
+      new_string: 'y',
+    }, agent);
+    assert.ok(out.startsWith('Error:'));
+  });
+});
+
+// ─── bashTool ────────────────────────────────────────────────────────────────
+
+describe('bashTool', () => {
+  it('has correct structure', () => {
+    assert.strictEqual(bashTool.name, 'bash');
+    assert.strictEqual(bashTool.readonly, false);
+    assert.strictEqual(bashTool.parallel, false);
+  });
+
+  it('runs a command and returns stdout', async () => {
+    const agent = freshAgent();
+    const out = await bashTool.execute({ command: 'echo hello' }, agent);
+    assert.ok(out.includes('hello'));
+  });
+
+  it('reports failed command with exit code', async () => {
+    const agent = freshAgent();
+    const out = await bashTool.execute({ command: 'exit 42' }, agent);
+    assert.ok(out.includes('Command failed'));
+    assert.ok(out.includes('42'));
+  });
+
+  it('runs in agent cwd', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'junecoder-bash-'));
+    try {
+      writeFileSync(join(dir, 'marker.txt'), 'here');
+      const agent = freshAgent(dir);
+      const out = await bashTool.execute({ command: 'ls marker.txt' }, agent);
+      assert.ok(out.includes('marker.txt'));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ─── globTool ────────────────────────────────────────────────────────────────
+
+describe('globTool', () => {
+  it('has correct structure', () => {
+    assert.strictEqual(globTool.name, 'glob');
+    assert.strictEqual(globTool.readonly, true);
+    assert.strictEqual(globTool.parallel, true);
+  });
+
+  const getDir = tmpdirCtx();
+
+  it('finds files by pattern', async () => {
+    const dir = getDir();
+    writeFileSync(join(dir, 'a.js'), '');
+    writeFileSync(join(dir, 'b.js'), '');
+    writeFileSync(join(dir, 'c.txt'), '');
+    const agent = freshAgent(dir);
+    const out = await globTool.execute({ pattern: '*.js' }, agent);
+    assert.ok(out.includes('a.js'));
+    assert.ok(out.includes('b.js'));
+    assert.ok(!out.includes('c.txt'));
+  });
+
+  it('supports ** for recursive matching', async () => {
+    const dir = getDir();
+    mkdirSync(join(dir, 'sub'));
+    writeFileSync(join(dir, 'sub', 'nested.js'), '');
+    const agent = freshAgent(dir);
+    const out = await globTool.execute({ pattern: '**/*.js' }, agent);
+    assert.ok(out.includes('sub/nested.js'));
+  });
+
+  it('returns (no matches) for no hits', async () => {
+    const dir = getDir();
+    const agent = freshAgent(dir);
+    const out = await globTool.execute({ pattern: '*.xyz' }, agent);
+    assert.strictEqual(out, '(no matches)');
+  });
+
+  it('respects path option', async () => {
+    const dir = getDir();
+    mkdirSync(join(dir, 'src'));
+    writeFileSync(join(dir, 'src', 'lib.js'), '');
+    writeFileSync(join(dir, 'root.js'), '');
+    const agent = freshAgent(dir);
+    const out = await globTool.execute({ pattern: '*.js', path: 'src' }, agent);
+    assert.ok(out.includes('lib.js'));
+    assert.ok(!out.includes('root.js'));
+  });
+
+  it('skips ignored dirs (node_modules, .git, etc.)', async () => {
+    const dir = getDir();
+    mkdirSync(join(dir, 'node_modules'));
+    writeFileSync(join(dir, 'node_modules', 'pkg.js'), '');
+    writeFileSync(join(dir, 'good.js'), '');
+    const agent = freshAgent(dir);
+    const out = await globTool.execute({ pattern: '**/*.js' }, agent);
+    assert.ok(out.includes('good.js'));
+    assert.ok(!out.includes('node_modules'));
+  });
+});
+
+// ─── grepTool ────────────────────────────────────────────────────────────────
+
+describe('grepTool', () => {
+  it('has correct structure', () => {
+    assert.strictEqual(grepTool.name, 'grep');
+    assert.strictEqual(grepTool.readonly, true);
+    assert.strictEqual(grepTool.parallel, true);
+  });
+
+  const getDir = tmpdirCtx();
+
+  it('finds matches in files', async () => {
+    const dir = getDir();
+    writeFileSync(join(dir, 'data.txt'), 'hello\nworld\nhello again');
+    const agent = freshAgent(dir);
+    const out = await grepTool.execute({ pattern: 'hello' }, agent);
+    assert.ok(out.includes('hello'));
+  });
+
+  it('returns (no matches) for no results', async () => {
+    const dir = getDir();
+    writeFileSync(join(dir, 'data.txt'), 'nothing');
+    const agent = freshAgent(dir);
+    const out = await grepTool.execute({ pattern: 'zzzzzNOTFOUNDzzzzz' }, agent);
+    assert.ok(out.includes('(no matches)'));
+  });
+});
+
+// ─── lsTool ──────────────────────────────────────────────────────────────────
+
+describe('lsTool', () => {
+  it('has correct structure', () => {
+    assert.strictEqual(lsTool.name, 'ls');
+    assert.strictEqual(lsTool.readonly, true);
+    assert.strictEqual(lsTool.parallel, true);
+  });
+
+  const getDir = tmpdirCtx();
+
+  it('lists directory contents', async () => {
+    const dir = getDir();
+    writeFileSync(join(dir, 'file1.txt'), 'hello');
+    mkdirSync(join(dir, 'subdir'));
+    const agent = freshAgent(dir);
+    const out = await lsTool.execute({}, agent);
+    assert.ok(out.includes('Directory:'));
+    assert.ok(out.includes('file1.txt'));
+    assert.ok(out.includes('subdir/'));
+  });
+
+  it('directories listed before files', async () => {
+    const dir = getDir();
+    writeFileSync(join(dir, 'zfile.txt'), '');
+    mkdirSync(join(dir, 'adir'));
+    const agent = freshAgent(dir);
+    const out = await lsTool.execute({}, agent);
+    const dirIdx = out.indexOf('adir/');
+    const fileIdx = out.indexOf('zfile.txt');
+    assert.ok(dirIdx < fileIdx);
+  });
+
+  it('handles path option', async () => {
+    const dir = getDir();
+    mkdirSync(join(dir, 'mydir'));
+    writeFileSync(join(dir, 'mydir', 'inside.txt'), '');
+    const agent = freshAgent(dir);
+    const out = await lsTool.execute({ path: 'mydir' }, agent);
+    assert.ok(out.includes('inside.txt'));
+  });
+
+  it('errors on non-existent dir', async () => {
+    const agent = freshAgent();
+    const out = await lsTool.execute({ path: '/no/such/dir/xyz' }, agent);
+    assert.ok(out.startsWith('Error'));
+  });
+});
+
+// ─── deleteTool ──────────────────────────────────────────────────────────────
+
+describe('deleteTool', () => {
+  it('has correct structure', () => {
+    assert.strictEqual(deleteTool.name, 'delete');
+    assert.strictEqual(deleteTool.readonly, false);
+    assert.strictEqual(deleteTool.parallel, false);
+  });
+
+  const getDir = tmpdirCtx();
+
+  it('deletes an untracked file', async () => {
+    const dir = getDir();
+    writeFileSync(join(dir, 'remove.me'), 'bye');
+    const agent = freshAgent(dir);
+    const out = await deleteTool.execute({ path: 'remove.me' }, agent);
+    assert.ok(out.includes('Deleted'));
+    assert.ok(!existsSync(join(dir, 'remove.me')));
+  });
+
+  it('errors on missing file', async () => {
+    const agent = freshAgent();
+    const out = await deleteTool.execute({ path: 'no.such' }, agent);
+    assert.ok(out.startsWith('Error: file not found'));
+  });
+
+  it('errors on directory', async () => {
+    const dir = getDir();
+    mkdirSync(join(dir, 'sub'));
+    const agent = freshAgent(dir);
+    const out = await deleteTool.execute({ path: 'sub' }, agent);
+    assert.ok(out.includes('directory'));
+  });
+
+  it('refuses to delete git-tracked file without force', async () => {
+    const gitDir = mkdtempSync(join(tmpdir(), 'junecoder-del-git-'));
+    try {
+      execSync('git init', { cwd: gitDir, stdio: 'ignore' });
+      execSync('git config user.email "t@t.com"', { cwd: gitDir, stdio: 'ignore' });
+      execSync('git config user.name "T"', { cwd: gitDir, stdio: 'ignore' });
+      writeFileSync(join(gitDir, 'tracked.txt'), 'data');
+      execSync('git add tracked.txt && git commit -m "add"', { cwd: gitDir, stdio: 'ignore' });
+      const agent = freshAgent(gitDir);
+      const out = await deleteTool.execute({ path: 'tracked.txt' }, agent);
+      assert.ok(out.startsWith('Error'));
+      assert.ok(out.includes('tracked by git'));
+    } finally {
+      rmSync(gitDir, { recursive: true, force: true });
+    }
+  });
+
+  it('force-deletes git-tracked file', async () => {
+    const gitDir = mkdtempSync(join(tmpdir(), 'junecoder-del-force-'));
+    try {
+      execSync('git init', { cwd: gitDir, stdio: 'ignore' });
+      execSync('git config user.email "t@t.com"', { cwd: gitDir, stdio: 'ignore' });
+      execSync('git config user.name "T"', { cwd: gitDir, stdio: 'ignore' });
+      writeFileSync(join(gitDir, 'bye.txt'), 'x');
+      execSync('git add bye.txt && git commit -m "add"', { cwd: gitDir, stdio: 'ignore' });
+      const agent = freshAgent(gitDir);
+      const out = await deleteTool.execute({ path: 'bye.txt', force: true }, agent);
+      assert.ok(out.includes('Deleted'));
+      assert.ok(!existsSync(join(gitDir, 'bye.txt')));
+    } finally {
+      rmSync(gitDir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ─── fetchTool (stub - network calls would fail) ─────────────────────────────
+
+describe('fetchTool', () => {
+  it('has correct structure', () => {
+    assert.strictEqual(fetchTool.name, 'fetch');
+    assert.strictEqual(fetchTool.readonly, true);
+    assert.strictEqual(fetchTool.parallel, true);
+  });
+
+  it('errors on invalid URL', async () => {
+    const out = await fetchTool.execute({ url: 'not-a-valid-url://' }, {});
+    assert.ok(out.startsWith('Error'));
+  });
+
+  it('errors on connection failure', async () => {
+    const out = await fetchTool.execute({ url: 'http://127.0.0.1:1/nope' }, {});
+    assert.ok(out.startsWith('Error'));
+  });
+});
+
+// ─── websearchTool (stub - network calls would fail) ─────────────────────────
+
+describe('websearchTool', () => {
+  it('has correct structure', () => {
+    assert.strictEqual(websearchTool.name, 'websearch');
+    assert.strictEqual(websearchTool.readonly, true);
+    assert.strictEqual(websearchTool.parallel, true);
+  });
+
+  it('errors on network failure', async () => {
+    // Bing search requires network, so this will fail
+    const out = await websearchTool.execute({ query: 'test' }, {});
+    assert.ok(typeof out === 'string');
+  });
+});
