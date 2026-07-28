@@ -1,6 +1,6 @@
 {
   "name": "junecoder",
-  "version": "1.0.24",
+  "version": "1.0.25",
   "description": "Zero Npm Dependencies Agent Framework",
   "main": "agent.mjs",
   "type": "module",
