@@ -274,7 +274,12 @@ export async function startTUI(agent, opts = {}) {
   }
   process.stdout.on("resize", render);
 
+  let lastKeyTime = 0;
   keyStream.on("keypress", (str, key) => {
+    const now = Date.now();
+    const isPasteBurst = (now - lastKeyTime) < 30;
+    lastKeyTime = now;
+
     if (state.permission) {
       if (state.permission.reasonMode) {
         // In reason mode: Escape cancels, everything else passes through for typing
@@ -305,6 +310,7 @@ export async function startTUI(agent, opts = {}) {
     }
     if (state.question) {
       if (key.name === "return" || key.name === "enter") {
+        if (isPasteBurst && state.question.options.length === 0) { state.input.splice(state.cursor, 0, "\n"); state.cursor++; render(); return; }
         const answer = state.question.options.length > 0 ? state.question.options[state.question.selected ?? 0] ?? "" : state.input.join("").trim();
         state.input = []; state.cursor = 0; const resolve = state.question.resolve; state.question = null;
         resolve(answer); state.status = state.processing ? "Processing..." : "Ready"; render(); return;
@@ -325,7 +331,10 @@ export async function startTUI(agent, opts = {}) {
     }
     if (key.name === "d" && key.ctrl && state.input.length === 0) { cleanup(); process.exit(0); return; }
     if (key.name === "l" && key.ctrl) { process.stdout.write(ansi.home + ESC + "[2J"); lastFrame = ""; render(); return; }
-    if (key.name === "return" || key.name === "enter") { submit(); return; }
+    if (key.name === "return" || key.name === "enter") {
+      if (isPasteBurst) { state.input.splice(state.cursor, 0, "\n"); state.cursor++; render(); return; }
+      submit(); return;
+    }
 
     if (key.name === "up") {
       if (state.history.length > 0 && state.historyIndex === -1) { state._savedInput = [...state.input]; state.historyIndex = state.history.length - 1; state.input = [...state.history[state.historyIndex]]; state.cursor = state.input.length; }
