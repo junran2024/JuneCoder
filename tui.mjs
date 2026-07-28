@@ -81,7 +81,7 @@ export function layoutInput(chars, cursor, width) {
     const w = charWidth(ch.codePointAt(0)); if (col + w > avail()) flush();
     cur += ch; col += w;
   }
-  if (cur || lines.length === 0) flush();
+  if (cur || lines.length === 0 || (chars.length > 0 && chars[chars.length - 1] === "\n")) flush();
   return { lines, cursorLine, cursorCol };
 }
 function summarize(args) {
