@@ -1,17 +1,8 @@
 /**
  * edit tool — replace exact text in a file.
- *
- * Uses execSync (cat > file) for disk writes to avoid virtual-filesystem isolation
- * that can cause writes to be lost when the agent session ends.
  */
-import { readFileSync, existsSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
-import { execSync } from 'node:child_process';
-
-/** Escape a path for safe use in a single-quoted shell string. */
-function shellEscape(str) {
-  return "'" + str.replace(/'/g, "'\\''") + "'";
-}
 
 export const editTool = {
   name: 'edit',
@@ -55,14 +46,7 @@ export const editTool = {
         : original.replace(args.old_string, args.new_string);
 
       mkdirSync(dirname(abs), { recursive: true });
-      execSync(`cat > ${shellEscape(abs)}`, {
-        cwd,
-        input: updated,
-        encoding: 'utf-8',
-        timeout: 10_000,
-        maxBuffer: 20 * 1024 * 1024,
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
+      writeFileSync(abs, updated, 'utf-8');
       return `Replaced ${args.replace_all ? count : 1} occurrence(s) in ${args.path}`;
     } catch (err) {
       return `Error editing file: ${err.message}`;

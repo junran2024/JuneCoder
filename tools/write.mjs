@@ -1,17 +1,8 @@
 /**
  * write tool — write content to a file, creating parent directories as needed.
- *
- * Uses execSync (cat > file) for disk writes to avoid virtual-filesystem isolation
- * that can cause writes to be lost when the agent session ends.
  */
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
-import { execSync } from 'node:child_process';
-
-/** Escape a path for safe use in a single-quoted shell string. */
-function shellEscape(str) {
-  return "'" + str.replace(/'/g, "'\\''") + "'";
-}
 
 export const writeTool = {
   name: 'write',
@@ -34,19 +25,12 @@ export const writeTool = {
 
     try {
       mkdirSync(dirname(abs), { recursive: true });
-      execSync(`cat > ${shellEscape(abs)}`, {
-        cwd,
-        input: args.content,
-        encoding: 'utf-8',
-        timeout: 10_000,
-        maxBuffer: 20 * 1024 * 1024,
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
+      writeFileSync(abs, args.content, 'utf-8');
       // Verify the write actually landed
       if (existsSync(abs)) {
         return `Wrote ${args.content.length} chars to ${args.path}`;
       }
-      return `Error writing file: write command completed but file not found at ${args.path}`;
+      return `Error writing file: write completed but file not found at ${args.path}`;
     } catch (err) {
       return `Error writing file: ${err.message}`;
     }
