@@ -448,7 +448,6 @@ export async function startTUI(agent, opts = {}) {
     state.input = []; state.cursor = 0; state.history.push(text); state.historyIndex = -1; state.scroll = 0;
     if (text.startsWith("/")) { await handleSlash(text); return; }
     pushLabel("\u276f You:", ansi.bold + C.user); pushLine(text, C.text);
-    try { const { createCheckpoint } = await import("./checkpoint.mjs"); await createCheckpoint(agent.cwd); } catch {}
     assistantLabeled = false; state.processing = true; state.status = "Processing...";
     state.streaming = ""; state.reasoning = ""; state.currentTool = null; state.toolStreams = {}; state.subOutput = "";
     state.processingStarted = Date.now(); state.controller = new AbortController();

@@ -184,7 +184,6 @@ memory.mjs        — File-based long-term memory store
 session.mjs       — Conversation persistence
 mcp.mjs           — MCP client (JSON-RPC over stdio)
 distill.mjs       — Knowledge extraction from conversations
-checkpoint.mjs    — Git stash-based state checkpointing
 skills.mjs        — Project skill loading
 config.mjs        — Configuration + .env loading
 metaTools.mjs     — Built-in meta tools (task, plan, goal, etc.)
@@ -209,6 +208,10 @@ Zero npm dependencies. Everything — TUI rendering, SSE parsing, YAML-like fron
 ---
 
 ## Changelog
+
+### 1.1.3
+
+- **Removed checkpoint module.** The git-stash checkpoint mechanism was causing files to disappear between turns (stash reverts working tree to HEAD). The guard added in 1.1.0 prevented data loss but also made checkpoints non-functional. Since the rewind feature was never implemented, the entire module was dead code with a dangerous history. ([#6bd7421](https://github.com/junranli/JuneCoder-github/commit/6bd7421))
 
 ### 1.1.2
 
