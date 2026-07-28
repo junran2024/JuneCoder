@@ -255,7 +255,7 @@ export async function startTUI(agent, opts = {}) {
     const ctxTokens = state.tokens.prompt || estimateTokens(agent.history);
     const ctxPct = ctxTokens > 0 ? Math.round((ctxTokens / ctxWindow) * 100) : 0;
     const ctxHint = ctxPct > 0 ? (ctxPct >= 80 ? " \u2502 " + C.warn + "ctx " + ctxPct + "%" + ansi.reset + ansi.dim : " \u2502 ctx " + ctxPct + "%") : "";
-    let statusLine = statusText + taskHint + tokenHint + cacheHint + ctxHint + scrollHint + " \u2502 Enter:send \u2502 /:cmds \u2502 Ctrl+C:quit";
+    let statusLine = statusText + taskHint + tokenHint + cacheHint + ctxHint + scrollHint + " \u2502 Enter:send Shift+Enter:newline \u2502 /:cmds \u2502 Ctrl+C:quit";
     const autoBanner = agent.autoApprove ? C.warn + "AUTO" + ansi.reset + ansi.dim + "\u2502" : "";
     const planBanner = agent.planMode ? C.tool + "PLAN" + ansi.reset + ansi.dim + "\u2502" : "";
     statusLine = sliceByWidth(statusLine, Math.max(10, W));
@@ -310,7 +310,7 @@ export async function startTUI(agent, opts = {}) {
     }
     if (state.question) {
       if (key.name === "return" || key.name === "enter") {
-        if (isPasteBurst && state.question.options.length === 0) { state.input.splice(state.cursor, 0, "\n"); state.cursor++; render(); return; }
+        if ((key.shift || isPasteBurst) && state.question.options.length === 0) { state.input.splice(state.cursor, 0, "\n"); state.cursor++; render(); return; }
         const answer = state.question.options.length > 0 ? state.question.options[state.question.selected ?? 0] ?? "" : state.input.join("").trim();
         state.input = []; state.cursor = 0; const resolve = state.question.resolve; state.question = null;
         resolve(answer); state.status = state.processing ? "Processing..." : "Ready"; render(); return;
@@ -332,7 +332,7 @@ export async function startTUI(agent, opts = {}) {
     if (key.name === "d" && key.ctrl && state.input.length === 0) { cleanup(); process.exit(0); return; }
     if (key.name === "l" && key.ctrl) { process.stdout.write(ansi.home + ESC + "[2J"); lastFrame = ""; render(); return; }
     if (key.name === "return" || key.name === "enter") {
-      if (isPasteBurst) { state.input.splice(state.cursor, 0, "\n"); state.cursor++; render(); return; }
+      if (key.shift || isPasteBurst) { state.input.splice(state.cursor, 0, "\n"); state.cursor++; render(); return; }
       submit(); return;
     }
 
