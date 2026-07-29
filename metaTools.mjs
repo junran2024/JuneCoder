@@ -307,9 +307,11 @@ export const memorySearchTool = {
 export const memoryPutTool = {
   name: 'memory_put',
   description:
-    'Save knowledge to long-term memory. Types: rule (coding standards), ' +
-    'knowledge (facts), decision (architecture decisions), pattern (debugging/workflows). ' +
-    'Scopes: personal (default), project, team.',
+    'Save knowledge to long-term memory. Only save information that is ' +
+    'project-specific and non-obvious — a base model could not derive it from training data. ' +
+    'Do NOT save common knowledge (e.g. "this project uses Node.js") or session-specific trivia. ' +
+    'Types: rule (coding standards), knowledge (facts), decision (architecture decisions), ' +
+    'pattern (debugging/workflows). Scopes: personal (default), project, team.',
   parameters: {
     type: 'object',
     properties: {

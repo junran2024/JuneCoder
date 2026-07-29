@@ -4,17 +4,45 @@
  * Skill files are markdown (.md) with optional YAML-like frontmatter.
  * Frontmatter keys: name (string), description (string).
  * Without frontmatter, name derives from filename and description from first line.
+ *
+ * Loads from two locations (project overrides global):
+ *   ~/.junecoder/skills/     — global, cross-project
+ *   cwd/.junecoder/skills/   — project-specific
  */
 import { join, basename, extname } from 'node:path';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 
 /**
- * Load skills from cwd/.junecoder/skills/.
+ * Load skills from ~/.junecoder/skills/ and cwd/.junecoder/skills/.
+ * Project-level skills override global skills with the same name.
  * @param {string} cwd
  * @returns {{ name: string, description: string, path: string }[]}
  */
 export function loadSkills(cwd) {
-  const skillsDir = join(cwd, '.junecoder', 'skills');
+  const dirs = [
+    join(homedir(), '.junecoder', 'skills'),   // global
+    join(cwd, '.junecoder', 'skills'),          // project
+  ];
+
+  const seen = new Set();
+  const skills = [];
+
+  for (const skillsDir of dirs) {
+    if (!existsSync(skillsDir)) continue;
+    const entries = readSkillsDir(skillsDir);
+    for (const skill of entries) {
+      if (seen.has(skill.name)) continue; // project overrides global
+      seen.add(skill.name);
+      skills.push(skill);
+    }
+  }
+
+  return skills;
+}
+
+/** Read .md files from a single skills directory. */
+function readSkillsDir(skillsDir) {
   if (!existsSync(skillsDir)) return [];
 
   let entries;
@@ -61,42 +89,48 @@ export function formatSkillListing(skills) {
  * @returns {string|null} skill content or null if not found
  */
 export function readSkill(cwd, name) {
-  const skillsDir = join(cwd, '.junecoder', 'skills');
-  if (!existsSync(skillsDir)) return null;
-
-  // Try exact name match (with/without .md extension)
-  const candidates = [
-    join(skillsDir, name),
-    join(skillsDir, name + '.md'),
+  const dirs = [
+    join(homedir(), '.junecoder', 'skills'),   // global
+    join(cwd, '.junecoder', 'skills'),          // project
   ];
 
-  for (const cand of candidates) {
-    if (existsSync(cand)) {
-      try {
-        return readFileSync(cand, 'utf-8');
-      } catch {
-        return null;
+  for (const skillsDir of dirs) {
+    if (!existsSync(skillsDir)) continue;
+
+    // Try exact name match (with/without .md extension)
+    const candidates = [
+      join(skillsDir, name),
+      join(skillsDir, name + '.md'),
+    ];
+
+    for (const cand of candidates) {
+      if (existsSync(cand)) {
+        try {
+          return readFileSync(cand, 'utf-8');
+        } catch {
+          return null;
+        }
       }
     }
-  }
 
-  // Fallback: scan directory for a match by frontmatter name
-  let entries;
-  try {
-    entries = readdirSync(skillsDir, { withFileTypes: true });
-  } catch {
-    return null;
-  }
-
-  for (const ent of entries) {
-    if (!ent.isFile() || extname(ent.name).toLowerCase() !== '.md') continue;
-    const filePath = join(skillsDir, ent.name);
+    // Fallback: scan directory for a match by frontmatter name
+    let entries;
     try {
-      const content = readFileSync(filePath, 'utf-8');
-      const fm = parseFrontmatter(content, ent.name);
-      if (fm.name === name) return content;
+      entries = readdirSync(skillsDir, { withFileTypes: true });
     } catch {
       continue;
+    }
+
+    for (const ent of entries) {
+      if (!ent.isFile() || extname(ent.name).toLowerCase() !== '.md') continue;
+      const filePath = join(skillsDir, ent.name);
+      try {
+        const content = readFileSync(filePath, 'utf-8');
+        const fm = parseFrontmatter(content, ent.name);
+        if (fm.name === name) return content;
+      } catch {
+        continue;
+      }
     }
   }
 

@@ -368,15 +368,6 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
   transientBlocks.push(`Working directory: ${agent.cwd}\n${envSnapshot}`);
   if (projInstr) transientBlocks.push(`Project instructions:\n${projInstr}`);
 
-  // Search memory if available
-  if (agent.memory) {
-    try {
-      const { search } = await import('./memory.mjs');
-      const memResult = await search(agent.memory, input, { limit: 5 });
-      if (memResult) transientBlocks.push(`Relevant memories:\n${memResult}`);
-    } catch { /* memory is optional */ }
-  }
-
   // Inject all transient context as user messages
   if (transientBlocks.length > 0) {
     agent.history.push({
@@ -643,11 +634,13 @@ function buildSystemPrompt(agent, depth) {
     prompt += `\n\n--- Project Instructions ---\n${projInstr}`;
   }
 
-  // Append skills listing
+  // Append skills listing (name + one-line description)
   try {
     const skills = loadSkills(agent.cwd);
-    const skillListing = formatSkillListing(skills);
-    prompt += `\n\n--- Available Skills ---\n${skillListing}`;
+    if (skills.length > 0) {
+      const listing = formatSkillListing(skills);
+      prompt += `\n\n--- Available Skills ---\n${listing}`;
+    }
   } catch { /* skills module may not be available */ }
 
   return prompt;
