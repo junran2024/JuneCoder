@@ -365,7 +365,7 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
   const projInstr = loadProjectInstructions(agent.cwd);
 
   const transientBlocks = [];
-  transientBlocks.push(`Working directory: ${agent.cwd}\n${envSnapshot}`);
+  transientBlocks.push(`${envSnapshot}`);
   if (projInstr) transientBlocks.push(`Project instructions:\n${projInstr}`);
 
   // Inject all transient context as user messages
