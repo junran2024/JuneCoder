@@ -445,7 +445,7 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
     if (!response.toolCalls || response.toolCalls.length === 0) {
       // Guard: if files were mutated but not verified, inject reminder
       if (agent._mutatedThisRun && !agent._verifiedThisRun && !agent.planMode) {
-        try { cb.onSystem('verify', 'Files modified, verifying changes...'); } catch { /* ignore */ }
+        try { cb.onSystem('verify'); } catch { /* ignore */ }
         agent._pendingReminders.push(
           '[System reminder: you modified files but have not verified the changes. Call verify before finishing.]',
         );
