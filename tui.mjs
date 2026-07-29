@@ -490,7 +490,7 @@ export async function startTUI(agent, opts = {}) {
       case "model": pushLine("  Model: " + agent.provider.model + " | Provider: " + (agent.provider.type || "?"), C.dim); break;
       case "key": {
         pushLine("  Current key: " + (agent.provider.apiKey ? agent.provider.apiKey.slice(0, 8) + "..." : "(none)"), C.dim);
-        pushLine("  Paste a new key, /cmd to cancel, or Enter to keep current.", C.tool);
+        pushLine("  Paste a new key.", C.tool);
         setupMode = true;
         state.status = "Paste your DeepSeek API key and press Enter";
         break;
