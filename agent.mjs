@@ -268,6 +268,7 @@ function defaultCallbacks(overrides = {}) {
     onTurnEnd: () => {},
     onTaskUpdate: () => {},
     onQuestion: async () => '',
+    onSystem: () => {},
     ...overrides,
   };
 }
@@ -444,6 +445,7 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
     if (!response.toolCalls || response.toolCalls.length === 0) {
       // Guard: if files were mutated but not verified, inject reminder
       if (agent._mutatedThisRun && !agent._verifiedThisRun && !agent.planMode) {
+        try { cb.onSystem('verify', 'Files modified, verifying changes...'); } catch { /* ignore */ }
         agent._pendingReminders.push(
           '[System reminder: you modified files but have not verified the changes. Call verify before finishing.]',
         );
@@ -560,6 +562,7 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
         agent._recentCallSigs[agent._recentCallSigs.length - 2] === sigKey &&
         agent._recentCallSigs[agent._recentCallSigs.length - 3] === sigKey
       ) {
+        try { cb.onSystem('loop', 'Repetitive calls detected, switching strategy'); } catch { /* ignore */ }
         agent.history.push({
           role: 'user',
           content: '[System reminder: you appear to be stuck in a loop — the same tool calls have been made 3 times in a row. Try a different approach or ask for clarification.]',
@@ -573,6 +576,7 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
       const goalTurns = agent.config.agent?.goalTurns || DEFAULT_GOAL_TURNS;
       const progress = Math.floor((turn / goalTurns) * 100);
       if (turn > 0 && turn % 10 === 0) {
+        try { cb.onSystem('goal', `Progress: ${turn}/${goalTurns} — "${agent.goal.objective}"`); } catch { /* ignore */ }
         agent.history.push({
           role: 'user',
           content: `[Goal progress: turn ${turn}/${goalTurns} (${Math.min(progress, 100)}%). Objective: "${agent.goal.objective}". Criteria: ${agent.goal.criteria || 'none'}]`,
@@ -595,6 +599,7 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
 
     // Step 12: Plan mode guidance (every 8 turns)
     if (agent.planMode && agent._turnsInPlanMode >= 8) {
+      try { cb.onSystem('plan', `${agent._turnsInPlanMode} turns in plan mode, consider exiting`); } catch { /* ignore */ }
       agent.history.push({
         role: 'user',
         content: `[You have been in plan mode for ${agent._turnsInPlanMode} turns. If you have enough information, consider exiting plan mode to implement.]`,

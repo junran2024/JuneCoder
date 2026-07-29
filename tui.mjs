@@ -454,13 +454,14 @@ export async function startTUI(agent, opts = {}) {
     const ticker = setInterval(() => { if (state.processing) render(); }, 1000); render();
     const callbacks = {
       onToken: t => { ensureAssistantLabel(); if (!state.streaming && state.reasoning) { pushLine(state.reasoning, C.reason); state.reasoning = ''; } state.streaming += t; scheduleRender(); },
-      onReasoning: t => { ensureAssistantLabel(); state.reasoning += t; scheduleRender(); },
+      onReasoning: t => { ensureAssistantLabel(); if (state.streaming) { pushLine(state.streaming, C.text); state.streaming = ''; } state.reasoning += t; scheduleRender(); },
       onToolCall: (name, args) => { flushStream(); ensureAssistantLabel(); state.currentTool = name; pushLine("  [tool] " + name + " " + summarize(args), C.tool); },
       onToolResult: (name, output, error) => { state.currentTool = null; const text = error ? "Error: " + error : (output || ""); const stream = state.toolStreams[name]; if (stream) { const tail = stream.trimEnd().slice(-4000); if (tail) pushLine(tail, C.dim); delete state.toolStreams[name]; } pushLine("  [done] " + name + " \u2192 " + sliceByWidth(sanitizeDisplay(text.split("\n")[0]), 100), C.dim); },
       onToolOutput: (name, output, error) => { state.toolStreams[name] = (state.toolStreams[name] ?? "") + (error ? "Error: " + error : (output || "")); scheduleRender(); },
       onPermissionRequest: (tool, args) => askPermission(tool.name || tool, args),
       onQuestion: async (q) => askQuestion(q),
       onCompress: () => pushLine("  [context] Compressed (history truncated)", C.warn),
+      onSystem: (type, msg) => pushLine(`  [${type}] ${msg}`, C.dim),
       onUsage: u => { state.tokens.prompt = u.prompt_tokens ?? 0; state.tokens.completion = u.completion_tokens ?? 0; state.tokens.cacheHit = u.prompt_cache_hit_tokens ?? u.prompt_tokens_details?.cached_tokens ?? 0; state.tokens.cacheMiss = u.prompt_cache_miss_tokens ?? 0; state.tokens.totalPrompt += u.prompt_tokens ?? 0; state.tokens.totalCompletion += u.completion_tokens ?? 0; },
       onTaskUpdate: items => { state.tasks = items || []; const done = items.filter(i => i.status === "done").length; const cur = items.find(i => i.status === "in_progress"); pushLine("  [task] " + done + "/" + items.length + (cur ? " \u25b6 " + cur.title : ""), C.dim); render(); },
       onTurnEnd: (() => { let n = 0; return () => { if (++n % 5 === 0) { try { saveSession(agent, state.lines); } catch {} } }; })(),
