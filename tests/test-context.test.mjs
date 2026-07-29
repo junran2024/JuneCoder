@@ -55,7 +55,7 @@ describe('compressIfNeeded', () => {
     assert.strictEqual(result, false);
   });
 
-  it('returns false when over threshold (stub)', async () => {
+  it('returns false when over threshold but LLM call fails (no provider)', async () => {
     const agent = { history: [{ role: 'user', content: 'x'.repeat(10000) }] };
     const result = await compressIfNeeded(agent, 10);
     assert.strictEqual(result, false);

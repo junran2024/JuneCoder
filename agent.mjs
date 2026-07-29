@@ -414,7 +414,7 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
     // Step 2: Compress check
     try {
       const { checkAndCompress } = await import('./context.mjs');
-      const didCompress = await checkAndCompress(agent, compactThreshold);
+      const didCompress = await checkAndCompress(agent, compactThreshold, cb);
       if (didCompress) {
         // Re-inject AUTO_REMINDER after compression
         agent.history.push({ role: 'user', content: AUTO_REMINDER, transient: true });

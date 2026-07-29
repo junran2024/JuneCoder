@@ -3,7 +3,7 @@
  *
  * Handles history truncation when the conversation grows too long.
  * Two strategies:
- *   1. compressIfNeeded — LLM-based summarization (stub for now)
+ *   1. compressIfNeeded — LLM-based summarization
  *   2. compressFallback — deterministic truncation when LLM summarization fails
  */
 import { AUTO_REMINDER } from './agent.mjs';
@@ -34,29 +34,100 @@ export function estimateTokens(messages) {
   return Math.ceil(chars / CHARS_PER_TOKEN);
 }
 
-// ─── LLM-based compression (stub) ─────────────────────────────────────────────
+// ─── LLM-based compression ────────────────────────────────────────────────────
 
 /**
- * Check if compression is needed and attempt LLM summarization.
- * Currently stubbed: returns false to let the caller track failure count.
+ * Summarize a slice of conversation messages into a concise English paragraph.
+ * Formats messages as a transcript and asks the LLM to capture intent, decisions,
+ * modified files, and current progress.
+ */
+function buildSummaryPrompt(messages) {
+  const transcript = messages.map((m) => {
+    const role = m.role;
+    let text = String(m.content || '');
+    if (m.tool_calls) {
+      const names = m.tool_calls.map((tc) => tc.function?.name || '?').join(', ');
+      text = `[tool_calls: ${names}]` + (text ? ' ' + text : '');
+    }
+    if (m.name) text = `[tool: ${m.name}] ${text}`;
+    if (text.length > 2000) text = text.slice(0, 2000) + '…';
+    return `${role}: ${text}`;
+  }).join('\n\n');
+
+  return `Summarize this conversation segment concisely in English. Include:
+- What the user wants to accomplish (goal / task).
+- Files that were read, created, or modified.
+- Key decisions or architectural choices made.
+- Current progress and what remains to be done.
+
+Conversation:
+${transcript}
+
+Summary:`; 
+}
+
+/** Maximum number of non-system messages to keep after LLM compression. */
+const KEEP_RECENT = 10;
+
+/**
+ * Attempt LLM-based summarization of the conversation history.
  *
- * When the stub is removed:
- *   1. If estimated tokens < threshold, return false (no action needed).
- *   2. Call LLM to generate a summary of the conversation so far.
- *   3. Replace history with: system prompt + summary message + recent messages.
+ *   1. Separate system messages from the rest.
+ *   2. Slice non-system messages into "old" (summarize) and "recent" (keep).
+ *   3. Call the provider LLM with a summarization prompt.
+ *   4. Replace history with: system + summary note + recent messages.
  *
  * @param {object} agent
  * @param {number} threshold - token threshold to trigger compression
+ * @param {object} [cb] - callbacks (cb.onCompress for TUI notification)
  * @returns {Promise<boolean>} true if compression was performed, false if skipped/failed
  */
-export async function compressIfNeeded(agent, threshold) {
-  const tokens = estimateTokens(agent.history);
+export async function compressIfNeeded(agent, threshold, cb) {
+  const tokens = agent._lastTotalTokens ?? estimateTokens(agent.history);
   if (tokens < threshold) return false;
 
-  // Stub: not implementing LLM summarization yet.
-  // Returns false so the caller increments _compressFailures and
-  // eventually triggers compressFallback.
-  return false;
+  const history = agent.history;
+  if (!history || history.length === 0) return false;
+
+  // Separate system messages from the rest
+  const systemMsgs = [];
+  const otherMsgs = [];
+  for (const msg of history) {
+    if (msg && msg.role === 'system') systemMsgs.push(msg);
+    else otherMsgs.push(msg);
+  }
+
+  // Nothing to compress if already short enough
+  if (otherMsgs.length <= KEEP_RECENT) return false;
+
+  const toSummarize = otherMsgs.slice(0, -KEEP_RECENT);
+  const toKeep = otherMsgs.slice(-KEEP_RECENT);
+
+  // Build prompt and call LLM
+  try {
+    const { chat } = await import('./provider.mjs');
+    const response = await chat(agent.provider, {
+      messages: [{ role: 'user', content: buildSummaryPrompt(toSummarize) }],
+    });
+
+    const summary = (response.content || '[Summary unavailable]').trim();
+
+    // Rebuild history: system + summary + recent
+    agent.history = [
+      ...systemMsgs,
+      { role: 'user', content: `[Conversation summary]\n\n${summary}`, _transient: true },
+      ...toKeep,
+    ];
+
+    agent._pendingReminders = agent._pendingReminders || [];
+    agent._pendingReminders.push(AUTO_REMINDER);
+
+    if (cb && cb.onCompress) cb.onCompress('llm');
+    return true;
+  } catch {
+    // LLM call failed — return false so caller tracks failure → fallback
+    return false;
+  }
 }
 
 // ─── Deterministic fallback truncation ────────────────────────────────────────
@@ -129,22 +200,24 @@ export function compressFallback(agent, keepRecent = 10) {
  *
  * @param {object} agent
  * @param {number} threshold - token threshold
+ * @param {object} [cb] - callbacks (cb.onCompress for TUI notification)
  * @returns {Promise<boolean>} true if any compression action was taken
  */
-export async function checkAndCompress(agent, threshold) {
+export async function checkAndCompress(agent, threshold, cb) {
   // Don't compress if threshold is 0 (disabled)
   if (!threshold || threshold <= 0) return false;
 
   // Under threshold: nothing to do. This is NOT a compression failure —
   // reset the counter so the fallback only fires after real over-threshold
   // failures, not every COMPRESS_FAILURE_LIMIT turns.
-  if (estimateTokens(agent.history) < threshold) {
+  const tokens = agent._lastTotalTokens ?? estimateTokens(agent.history);
+  if (tokens < threshold) {
     agent._compressFailures = 0;
     return false;
   }
 
   // Try LLM-based compression
-  const compressed = await compressIfNeeded(agent, threshold);
+  const compressed = await compressIfNeeded(agent, threshold, cb);
   if (compressed) return true;
 
   // LLM compression didn't happen — track failures
@@ -153,6 +226,7 @@ export async function checkAndCompress(agent, threshold) {
   // If we've failed too many times, fall back to deterministic truncation
   if (agent._compressFailures >= COMPRESS_FAILURE_LIMIT) {
     compressFallback(agent);
+    if (cb && cb.onCompress) cb.onCompress('fallback');
     return true;
   }
 

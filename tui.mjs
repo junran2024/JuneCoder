@@ -12,7 +12,6 @@ import { basename, join } from "node:path";
 import { homedir } from "node:os";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { runAgent, ContinueError } from "./agent.mjs";
-import { estimateTokens } from "./context.mjs";
 import {
   saveSession, clearSession, archiveCurrent,
   listSlots, switchToSlot, sessionPath,
@@ -105,8 +104,8 @@ export async function startTUI(agent, opts = {}) {
   const state = {
     lines: [], streaming: "", input: [], cursor: 0, history: [], historyIndex: -1,
     scroll: 0, processing: false, controller: null, permission: null, permissionPreview: [],
-    question: null, tasks: agent.tasks ?? [], tokens: { prompt: 0, completion: 0, cacheHit: 0, cacheMiss: 0, totalPrompt: 0, totalCompletion: 0 },
-    ctxCache: { len: -1, tokens: 0 }, reasoning: "", toolStreams: {},
+    question: null, tasks: agent.tasks ?? [], tokens: { prompt: 0, completion: 0, total: 0, cacheHit: 0, cacheMiss: 0, totalPrompt: 0, totalCompletion: 0, totalTotal: 0 },
+    reasoning: "", toolStreams: {},
     subOutput: "", currentSub: null, currentTool: null, processingStarted: 0, status: "Ready",
   };
   if (state.tasks.length > 0 && state.tasks.every(t => t.status === "done")) state.tasks = [];
@@ -250,9 +249,8 @@ export async function startTUI(agent, opts = {}) {
     const elapsed = state.processing ? " " + Math.floor((Date.now() - state.processingStarted)/1000) + "s" : "";
     const toolHint = state.currentTool ? " " + state.currentTool + "\u2026" : "";
     const statusText = state.processing ? state.status + toolHint + elapsed : state.status;
-    if (state.ctxCache.len !== agent.history.length) state.ctxCache = { len: agent.history.length, tokens: estimateTokens(agent.history) };
     const ctxWindow = agent.config?.agent?.contextWindow ?? 1_000_000;
-    const ctxTokens = state.tokens.prompt || estimateTokens(agent.history);
+    const ctxTokens = state.tokens.total || agent._lastTotalTokens || 0;
     const ctxPct = ctxTokens > 0 ? Math.round((ctxTokens / ctxWindow) * 100) : 0;
     const ctxHint = ctxPct > 0 ? (ctxPct >= 80 ? " \u2502 " + C.warn + "ctx " + ctxPct + "%" + ansi.reset + ansi.dim : " \u2502 ctx " + ctxPct + "%") : "";
     let statusLine = statusText + taskHint + tokenHint + cacheHint + ctxHint + scrollHint + " \u2502 Enter:send Option+Enter:newline \u2502 /:cmds \u2502 Ctrl+C:quit";
@@ -460,9 +458,9 @@ export async function startTUI(agent, opts = {}) {
       onToolOutput: (name, output, error) => { state.toolStreams[name] = (state.toolStreams[name] ?? "") + (error ? "Error: " + error : (output || "")); scheduleRender(); },
       onPermissionRequest: (tool, args) => askPermission(tool.name || tool, args),
       onQuestion: async (q) => askQuestion(q),
-      onCompress: () => pushLine("  [context] Compressed (history truncated)", C.warn),
+      onCompress: (type) => pushLine(type === 'llm' ? "  [context] Summarized via LLM" : "  [context] Compressed (history truncated)", C.warn),
       onSystem: (type, msg) => pushLine(`  [${type}] ${msg}`, C.dim),
-      onUsage: u => { state.tokens.prompt = u.prompt_tokens ?? 0; state.tokens.completion = u.completion_tokens ?? 0; state.tokens.cacheHit = u.prompt_cache_hit_tokens ?? u.prompt_tokens_details?.cached_tokens ?? 0; state.tokens.cacheMiss = u.prompt_cache_miss_tokens ?? 0; state.tokens.totalPrompt += u.prompt_tokens ?? 0; state.tokens.totalCompletion += u.completion_tokens ?? 0; },
+      onUsage: u => { state.tokens.prompt = u.prompt_tokens ?? 0; state.tokens.completion = u.completion_tokens ?? 0; state.tokens.total = u.total_tokens ?? 0; state.tokens.cacheHit = u.prompt_cache_hit_tokens ?? u.prompt_tokens_details?.cached_tokens ?? 0; state.tokens.cacheMiss = u.prompt_cache_miss_tokens ?? 0; state.tokens.totalPrompt += u.prompt_tokens ?? 0; state.tokens.totalCompletion += u.completion_tokens ?? 0; state.tokens.totalTotal += u.total_tokens ?? 0; agent._lastTotalTokens = u.total_tokens ?? 0; },
       onTaskUpdate: items => { state.tasks = items || []; const done = items.filter(i => i.status === "done").length; const cur = items.find(i => i.status === "in_progress"); pushLine("  [task] " + done + "/" + items.length + (cur ? " \u25b6 " + cur.title : ""), C.dim); render(); },
       onTurnEnd: (() => { let n = 0; return () => { if (++n % 5 === 0) { try { saveSession(agent, state.lines); } catch {} } }; })(),
     };
@@ -498,9 +496,9 @@ export async function startTUI(agent, opts = {}) {
       }
       case "session": { const slots = listSlots(agent.cwd); pushLine("Sessions:", C.tool); if (slots.length === 0) pushLine("  (none)", C.dim); else for (const s of slots) pushLine("  " + s.label, C.dim); break; }
       case "clear": archiveCurrent(agent.cwd); agent.history = []; state.lines = []; state.streaming = ""; state.reasoning = ""; state.tasks = []; agent.tasks = []; state.scroll = 0; pushLine("Cleared (archived).", C.warn); break;
-      case "new": archiveCurrent(agent.cwd); agent.history = []; state.lines = []; state.streaming = ""; state.reasoning = ""; state.toolStreams = {}; state.tasks = []; agent.tasks = []; state.scroll = 0; state.tokens = { prompt: 0, completion: 0, cacheHit: 0, cacheMiss: 0, totalPrompt: 0, totalCompletion: 0 }; pushLine("New session.", C.tool); break;
+      case "new": archiveCurrent(agent.cwd); agent.history = []; state.lines = []; state.streaming = ""; state.reasoning = ""; state.toolStreams = {}; state.tasks = []; agent.tasks = []; state.scroll = 0; state.tokens = { prompt: 0, completion: 0, total: 0, cacheHit: 0, cacheMiss: 0, totalPrompt: 0, totalCompletion: 0, totalTotal: 0 }; delete agent._lastTotalTokens; pushLine("New session.", C.tool); break;
       case "tasks": if (state.tasks.length === 0) pushLine("No tasks.", C.dim); else for (const t of state.tasks) pushLine("  " + (t.status === "done" ? "\u2713" : t.status === "in_progress" ? "\u25b6" : "\u25cb") + " " + t.title, C.dim); break;
-      case "stats": pushLine("Last call: \u2191" + fmtK(state.tokens.prompt) + " \u2193" + fmtK(state.tokens.completion) + " | Session total: \u2191" + fmtK(state.tokens.totalPrompt) + " \u2193" + fmtK(state.tokens.totalCompletion) + " | History: " + agent.history.length + " msgs (~" + estimateTokens(agent.history) + " t) | Lines: " + state.lines.length, C.dim); break;
+      case "stats": pushLine("Last call: \u2191" + fmtK(state.tokens.prompt) + " \u2193" + fmtK(state.tokens.completion) + " | Session total: \u2191" + fmtK(state.tokens.totalPrompt) + " \u2193" + fmtK(state.tokens.totalCompletion) + " \u2211" + fmtK(state.tokens.totalTotal) + " | History: " + agent.history.length + " msgs" + (agent._lastTotalTokens ? " (" + fmtK(agent._lastTotalTokens) + " t)" : "") + " | Lines: " + state.lines.length, C.dim); break;
       case "quit": case "exit": cleanup(); process.exit(0); return;
       default: pushLine("Unknown: /" + cmd + " (try /help)", C.error);
     }
