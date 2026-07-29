@@ -2,7 +2,7 @@
  * ls tool — list directory contents with type, size, and modification time.
  */
 import { readdirSync, statSync } from 'node:fs';
-import { resolve, relative } from 'node:path';
+import { resolve } from 'node:path';
 
 export const lsTool = {
   name: 'ls',

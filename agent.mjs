@@ -628,6 +628,9 @@ function buildSystemPrompt(agent, depth) {
     prompt += `\n\n${overlayText}`;
   }
 
+  // Working directory
+  prompt += `\n\nWorking directory: ${agent.cwd}`;
+
   // Sub-agent specific note
   if (depth > 0) {
     prompt += `\n\nYou are a sub-agent at depth ${depth}. Work independently on your assigned task and return a concise report. Do not ask follow-up questions — complete the task yourself.`;
