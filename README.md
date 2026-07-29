@@ -69,11 +69,7 @@ Requires **Node.js >= 21.7**.
 npm install -g junecoder
 ```
 
-You need a DeepSeek API key. Provide it one of these ways:
-
-1. **Interactive setup** — the TUI prompts for it on first run
-2. `~/.junecoder/.env` — managed by the `/key` command in TUI
-3. `DEEPSEEK_API_KEY` environment variable
+You need a DeepSeek API key. The TUI will prompt you on first run, and you can change it anytime with `/key`.
 
 ---
 
@@ -114,19 +110,6 @@ junecoder -v, --version             Show version
 ```
 
 ---
-
-## Configuration
-
-### `.env` File
-
-Your API key lives in a single file: `~/.junecoder/.env`. It is created automatically when you enter your key on first run, and can be changed anytime with the `/key` command in TUI.
-
-```bash
-# ~/.junecoder/.env
-DEEPSEEK_API_KEY=sk-...
-```
-
-No project-level `.env` files are read — one file, no surprises.
 
 ### Project Instructions
 
