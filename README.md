@@ -142,11 +142,11 @@ mcp.mjs           — MCP client (JSON-RPC over stdio)
 distill.mjs       — Knowledge extraction from conversations
 skills.mjs        — Project skill loading
 config.mjs        — Configuration + .env loading
-metaTools.mjs     — Built-in meta tools (task, plan, goal, etc.)
-tui.mjs           — Terminal UI (raw ANSI)
 prompt.md         — Agent system prompt (rules, worldview, values)
 cli.js            — CLI entry point
+tui.mjs           — Terminal UI (raw ANSI)
 tools.mjs         — Tools barrel (re-exports all tools)
+metaTools.mjs     — Built-in meta tools (task, plan, goal, etc.)
 tools/
   index.mjs       — Tool schema conversion + base tool list
   read.mjs        — File reading
