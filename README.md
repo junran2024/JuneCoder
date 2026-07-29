@@ -7,6 +7,8 @@ npm install -g junecoder
 junecoder
 ```
 
+You need a DeepSeek API key. The TUI will prompt you on first run, and you can change it anytime with `/key`.
+
 ---
 
 ## Features
@@ -61,18 +63,6 @@ Project-specific skill files in `.junecoder/skills/*.md` with YAML-like frontmat
 
 ---
 
-## Installation
-
-Requires **Node.js >= 21.7**.
-
-```bash
-npm install -g junecoder
-```
-
-You need a DeepSeek API key. The TUI will prompt you on first run, and you can change it anytime with `/key`.
-
----
-
 ## Usage
 
 ### TUI Mode (default)
@@ -115,9 +105,6 @@ junecoder -v, --version             Show version
 
 Place any of these files in your project root for custom agent instructions:
 - `AGENTS.md`
-- `PROJECT_RULES.md`
-- `.cursorrules`
-- `.windsurfrules`
 
 Also read from `~/.junecoder/AGENTS.md` for global instructions.
 
@@ -157,7 +144,9 @@ skills.mjs        — Project skill loading
 config.mjs        — Configuration + .env loading
 metaTools.mjs     — Built-in meta tools (task, plan, goal, etc.)
 tui.mjs           — Terminal UI (raw ANSI)
+prompt.md         — Agent system prompt (rules, worldview, values)
 cli.js            — CLI entry point
+tools.mjs         — Tools barrel (re-exports all tools)
 tools/
   index.mjs       — Tool schema conversion + base tool list
   read.mjs        — File reading
