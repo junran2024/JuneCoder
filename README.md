@@ -209,6 +209,10 @@ Zero npm dependencies. Everything — TUI rendering, SSE parsing, YAML-like fron
 
 ## Changelog
 
+### 1.1.4
+
+- **Prompt hardening against path fabrication.** Added explicit ban on fabricating file paths — agent must use `ls`/`glob` to verify paths before referencing them. Added working directory constraint: agent defaults to project directory unless user requests otherwise. These rules prevent the agent from hallucinating non-existent paths, a behavior that eroded user trust. ([prompt.md](prompt.md))
+
 ### 1.1.3
 
 - **Removed checkpoint module.** The git-stash checkpoint mechanism was causing files to disappear between turns (stash reverts working tree to HEAD). The guard added in 1.1.0 prevented data loss but also made checkpoints non-functional. Since the rewind feature was never implemented, the entire module was dead code with a dangerous history. ([#6bd7421](https://github.com/junranli/JuneCoder-github/commit/6bd7421))
