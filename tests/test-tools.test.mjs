@@ -427,25 +427,8 @@ describe('deleteTool', () => {
     assert.ok(out.includes('directory'));
   });
 
-  it('refuses to delete git-tracked file without force', async () => {
+  it('deletes git-tracked file', async () => {
     const gitDir = mkdtempSync(join(tmpdir(), 'junecoder-del-git-'));
-    try {
-      execSync('git init', { cwd: gitDir, stdio: 'ignore' });
-      execSync('git config user.email "t@t.com"', { cwd: gitDir, stdio: 'ignore' });
-      execSync('git config user.name "T"', { cwd: gitDir, stdio: 'ignore' });
-      writeFileSync(join(gitDir, 'tracked.txt'), 'data');
-      execSync('git add tracked.txt && git commit -m "add"', { cwd: gitDir, stdio: 'ignore' });
-      const agent = freshAgent(gitDir);
-      const out = await deleteTool.execute({ path: 'tracked.txt' }, agent);
-      assert.ok(out.startsWith('Error'));
-      assert.ok(out.includes('tracked by git'));
-    } finally {
-      rmSync(gitDir, { recursive: true, force: true });
-    }
-  });
-
-  it('force-deletes git-tracked file', async () => {
-    const gitDir = mkdtempSync(join(tmpdir(), 'junecoder-del-force-'));
     try {
       execSync('git init', { cwd: gitDir, stdio: 'ignore' });
       execSync('git config user.email "t@t.com"', { cwd: gitDir, stdio: 'ignore' });
@@ -453,7 +436,7 @@ describe('deleteTool', () => {
       writeFileSync(join(gitDir, 'bye.txt'), 'x');
       execSync('git add bye.txt && git commit -m "add"', { cwd: gitDir, stdio: 'ignore' });
       const agent = freshAgent(gitDir);
-      const out = await deleteTool.execute({ path: 'bye.txt', force: true }, agent);
+      const out = await deleteTool.execute({ path: 'bye.txt' }, agent);
       assert.ok(out.includes('Deleted'));
       assert.ok(!existsSync(join(gitDir, 'bye.txt')));
     } finally {

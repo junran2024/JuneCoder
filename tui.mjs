@@ -484,7 +484,7 @@ export async function startTUI(agent, opts = {}) {
   async function handleSlash(text) {
     const cmd = text.slice(1).split(/\s+/)[0].toLowerCase();
     switch (cmd) {
-      case "help": for (const l of ["/help /plan /auto /key /model /session /clear /tasks /stats /new /distill /quit"]) pushLine(l, C.dim); break;
+      case "help": for (const l of ["/help /plan /auto /key /model /session /clear /tasks /stats /new /quit"]) pushLine(l, C.dim); break;
       case "plan": agent.planMode = !agent.planMode; pushLine("  Plan mode " + (agent.planMode ? "ON" : "OFF"), C.tool); break;
       case "auto": agent.autoApprove = !agent.autoApprove; pushLine("  Auto-approve " + (agent.autoApprove ? "ON" : "OFF"), agent.autoApprove ? C.warn : C.tool); break;
       case "model": pushLine("  Model: " + agent.provider.model + " | Provider: " + (agent.provider.type || "?"), C.dim); break;
@@ -501,40 +501,6 @@ export async function startTUI(agent, opts = {}) {
       case "tasks": if (state.tasks.length === 0) pushLine("No tasks.", C.dim); else for (const t of state.tasks) pushLine("  " + (t.status === "done" ? "\u2713" : t.status === "in_progress" ? "\u25b6" : "\u25cb") + " " + t.title, C.dim); break;
       case "stats": pushLine("Last call: \u2191" + fmtK(state.tokens.prompt) + " \u2193" + fmtK(state.tokens.completion) + " | Session total: \u2191" + fmtK(state.tokens.totalPrompt) + " \u2193" + fmtK(state.tokens.totalCompletion) + " | History: " + agent.history.length + " msgs (~" + estimateTokens(agent.history) + " t) | Lines: " + state.lines.length, C.dim); break;
       case "quit": case "exit": cleanup(); process.exit(0); return;
-      case "distill": {
-        if (!agent.memory) {
-          pushLine("[distill] 需要 memory 支持 (agent.memory 未初始化)", C.error);
-          break;
-        }
-        pushLine("[distill] 分析当前会话...", C.tool);
-        render();
-        try {
-          const { historyToTranscript, extractCandidates, saveCandidate } = await import("./distill.mjs");
-          const transcript = historyToTranscript(agent.history);
-          if (!transcript) { pushLine("[distill] 会话为空，没有可提取的内容", C.dim); break; }
-          const candidates = await extractCandidates(agent.provider, transcript, {});
-          if (candidates.length === 0) { pushLine("[distill] 本次会话没有值得沉淀的知识", C.dim); break; }
-          pushLine(`[distill] 发现 ${candidates.length} 条候选知识：`, C.tool);
-          render();
-          let saved = 0;
-          for (const c of candidates) {
-            pushLine(`\n  [${c.type}] ${c.title}`, C.text);
-            pushLine(`    ${c.content.slice(0, 200)}...`, C.dim);
-            const result = await askPermission("distill-save", { title: c.title });
-            if (result.allowed) {
-              const status = await saveCandidate(agent.memory, c, {});
-              pushLine(`  ✓ ${status}`, C.tool);
-              saved++;
-            } else {
-              pushLine("  ✗ skipped", C.dim);
-            }
-          }
-          pushLine(`[distill] 完成：入库 ${saved}/${candidates.length} 条`, C.tool);
-        } catch (err) {
-          pushLine(`[distill] 失败: ${err.message}`, C.error);
-        }
-        break;
-      }
       default: pushLine("Unknown: /" + cmd + " (try /help)", C.error);
     }
     render();

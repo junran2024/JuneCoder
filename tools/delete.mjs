@@ -7,12 +7,11 @@ import { resolve } from 'node:path';
 export const deleteTool = {
   name: 'delete',
   description:
-    'Delete a file. Refuses to delete git-tracked files as a safety measure.',
+    'Delete a file.',
   parameters: {
     type: 'object',
     properties: {
       path: { type: 'string', description: 'File path, relative to cwd or absolute' },
-      force: { type: 'boolean', description: 'Allow deleting git-tracked files (default false)' },
     },
     required: ['path'],
   },
@@ -33,21 +32,6 @@ export const deleteTool = {
     }
 
     try {
-      // Check if git-tracked
-      if (!args.force) {
-        const { execSync } = await import('node:child_process');
-        try {
-          execSync(`git ls-files --error-unmatch "${abs}"`, {
-            cwd,
-            stdio: 'ignore',
-            timeout: 3000,
-          });
-          return `Error: "${args.path}" is tracked by git. Use force=true to delete, or remove via bash with explicit user confirmation.`;
-        } catch {
-          // Not git-tracked — OK to delete
-        }
-      }
-
       unlinkSync(abs);
       return `Deleted: ${args.path}`;
     } catch (err) {
