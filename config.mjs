@@ -1,17 +1,17 @@
 /**
- * Configuration module — provides configDir path and default config factory.
- *
- * The config object is passed into createAgent() externally; this module
- * provides the directory for config files and default values.
+ * Configuration module — provides configDir path, default config factory, and
+ * .env file loading. No config.json support — API keys go in .env files only.
  */
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { existsSync, readFileSync } from 'node:fs';
 
-// Load .env files before any code reads process.env.
+// Load ~/.junecoder/.env before any code reads process.env.
+// This is the single .env file — managed by /key command in TUI.
 // Must happen here (not cli.mjs) because ESM static imports are hoisted —
 // this module's body runs before cli.mjs's body.
-for (const envPath of ['.env', join(homedir(), '.junecoder', '.env')]) {
+{
+  const envPath = join(homedir(), '.junecoder', '.env');
   try {
     if (existsSync(envPath)) {
       const content = readFileSync(envPath, 'utf-8');
@@ -55,40 +55,4 @@ export function defaultConfig() {
   };
 }
 
-/**
- * Load user config from configDir/config.json.
- * Returns merged config: defaults overridden by user settings.
- */
-export function loadConfig(dir = configDir) {
-  const defaults = defaultConfig();
-  const configPath = join(dir, 'config.json');
 
-  if (!existsSync(configPath)) return defaults;
-
-  try {
-    const raw = readFileSync(configPath, 'utf-8');
-    const user = JSON.parse(raw);
-    return deepMerge(defaults, user);
-  } catch {
-    return defaults;
-  }
-}
-
-/** Shallow-ish deep merge: only merges top-level objects. */
-function deepMerge(base, override) {
-  const result = { ...base };
-  for (const key of Object.keys(override)) {
-    if (
-      typeof base[key] === 'object' &&
-      base[key] !== null &&
-      !Array.isArray(base[key]) &&
-      typeof override[key] === 'object' &&
-      override[key] !== null
-    ) {
-      result[key] = { ...base[key], ...override[key] };
-    } else {
-      result[key] = override[key];
-    }
-  }
-  return result;
-}

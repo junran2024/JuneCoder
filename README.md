@@ -51,7 +51,7 @@ Connect to MCP servers via JSON-RPC over stdio. External tools are registered wi
 Conversations survive restarts. Sessions are automatically saved to `~/.junecoder/sessions/`. Switch between session slots, archive old ones.
 
 ### Long-Term Memory
-File-based JSON memory store with keyword search. The agent remembers conventions, decisions, and patterns across sessions. Memory entries can be manually saved or auto-distilled from conversations.
+File-based JSON memory store with keyword search. The agent remembers conventions, decisions, and patterns across sessions. Memory entries can be saved manually or extracted from conversations via the `/distill` command.
 
 ### Context Compression
 When the context window fills up, the agent compresses history. An LLM-based summarization layer is planned; currently a deterministic fallback truncates old messages while preserving system prompts and recent context.
@@ -72,10 +72,8 @@ npm install -g junecoder
 You need a DeepSeek API key. Provide it one of these ways:
 
 1. **Interactive setup** — the TUI prompts for it on first run
-2. `.env` file in your project — `DEEPSEEK_API_KEY=sk-...`
-3. `~/.junecoder/.env` — global config
-4. `DEEPSEEK_API_KEY` environment variable
-5. `~/.junecoder/config.json` — provider config
+2. `~/.junecoder/.env` — managed by the `/key` command in TUI
+3. `DEEPSEEK_API_KEY` environment variable
 
 ---
 
@@ -119,28 +117,16 @@ junecoder -v, --version             Show version
 
 ## Configuration
 
-### `~/.junecoder/config.json`
+### `.env` File
 
-```json
-{
-  "agent": {
-    "maxTurns": 50,
-    "subagentTurns": 20,
-    "contextWindow": 1000000,
-    "compactThreshold": 750000
-  },
-  "provider": {
-    "type": "deepseek",
-    "model": "deepseek-v4-pro",
-    "baseURL": "https://api.deepseek.com",
-    "thinking": { "type": "enabled" }
-  }
-}
+Your API key lives in a single file: `~/.junecoder/.env`. It is created automatically when you enter your key on first run, and can be changed anytime with the `/key` command in TUI.
+
+```bash
+# ~/.junecoder/.env
+DEEPSEEK_API_KEY=sk-...
 ```
 
-### `.env` Files
-
-Loaded from (in order): `./.env`, `~/.junecoder/.env`. Existing environment variables take precedence.
+No project-level `.env` files are read — one file, no surprises.
 
 ### Project Instructions
 
@@ -211,7 +197,8 @@ Zero npm dependencies. Everything — TUI rendering, SSE parsing, YAML-like fron
 
 ### 1.1.4
 
-- **Prompt hardening against path fabrication.** Added explicit ban on fabricating file paths — agent must use `ls`/`glob` to verify paths before referencing them. Added working directory constraint: agent defaults to project directory unless user requests otherwise. These rules prevent the agent from hallucinating non-existent paths, a behavior that eroded user trust. ([prompt.md](prompt.md))
+- **Removed `config.json` support and project-level `.env`.** API key now lives in exactly one file: `~/.junecoder/.env`, managed by the `/key` command. No more silent priority conflicts between multiple config sources.
+- **Prompt hardening against path fabrication.** Added explicit ban on fabricating file paths — agent must use `ls`/`glob` to verify paths before referencing them. Added working directory constraint. ([prompt.md](prompt.md))
 
 ### 1.1.3
 

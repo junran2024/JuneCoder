@@ -10,17 +10,15 @@
  *
  * API keys can be provided via:
  *   1. Interactive setup on first run (TUI)
- *   2. .env file in project directory (DEEPSEEK_API_KEY=sk-...)
- *   3. ~/.junecoder/.env
- *   4. DEEPSEEK_API_KEY environment variable
- *   5. ~/.junecoder/config.json
+ *   2. ~/.junecoder/.env (managed by /key command)
+ *   3. DEEPSEEK_API_KEY environment variable
  */
 import { existsSync, statSync, readFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { homedir } from 'node:os';
 import { createAgent } from './agent.mjs';
 import { startTUI } from './tui.mjs';
-import { loadConfig } from './config.mjs';
+import { defaultConfig } from './config.mjs';
 import { loadSession } from './session.mjs';
 import { memoryDir } from './memory.mjs';
 
@@ -150,16 +148,16 @@ if (existsSync(targetDir) && statSync(targetDir).isDirectory()) {
   process.exit(1);
 }
 
-// Load config and API key
-const config = loadConfig();
-let apiKey = config.provider.apiKey || process.env.DEEPSEEK_API_KEY || '';
+// Load config (defaults only — no config.json) and API key from env
+const config = defaultConfig();
+const apiKey = process.env.DEEPSEEK_API_KEY || '';
 
 // Only treat as valid if it starts with sk- (DeepSeek key format)
 if (apiKey && !apiKey.startsWith('sk-')) {
-  apiKey = '';  // invalid format, treat as not configured
+  config.provider.apiKey = '';  // invalid format, treat as not configured
+} else {
+  config.provider.apiKey = apiKey;
 }
-
-config.provider.apiKey = apiKey;
 
 // Create Agent instance with target cwd
 const agent = createAgent({
