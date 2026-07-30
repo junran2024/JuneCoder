@@ -386,7 +386,7 @@ export async function startTUI(agent, opts = {}) {
       const resolve = state.permission.resolve;
       state.permission = null; state.permissionPreview = [];
       state.status = state.processing ? "Processing..." : "Ready";
-      pushLine("  Denied: " + (reason || "(no reason)"), C.warn);
+      pushLine("  [denied] " + (reason || "(no reason)"), C.warn);
       resolve({ allowed: false, reason: reason || undefined });
       render(); return;
     }

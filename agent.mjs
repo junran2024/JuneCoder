@@ -528,8 +528,10 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
         }
       }
 
-      // Report result
-      try { cb.onToolResult(r.name, r.output, r.error); } catch { /* ignore */ }
+      // Report result (skip for denied tools — askPermission already showed denial)
+      if (!r.denied) {
+        try { cb.onToolResult(r.name, r.output, r.error); } catch { /* ignore */ }
+      }
 
       // Sync task list to TUI after task tool
       if (r.name === 'task' && !r.error && !r.denied) {
