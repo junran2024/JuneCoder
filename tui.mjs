@@ -459,7 +459,7 @@ export async function startTUI(agent, opts = {}) {
       onPermissionRequest: (tool, args) => askPermission(tool.name || tool, args),
       onQuestion: async (q) => askQuestion(q),
       onCompress: (type) => pushLine(type === 'llm' ? "  [context] Summarized via LLM" : "  [context] Compressed (history truncated)", C.warn),
-      onSystem: (type, msg) => pushLine(`  [${type}] ${msg}`, C.dim),
+      onSystem: (type, msg) => { flushStream(); pushLine(`  [${type}] ${msg}`, C.dim); },
       onUsage: u => { state.tokens.prompt = u.prompt_tokens ?? 0; state.tokens.completion = u.completion_tokens ?? 0; state.tokens.total = u.total_tokens ?? 0; state.tokens.cacheHit = u.prompt_cache_hit_tokens ?? u.prompt_tokens_details?.cached_tokens ?? 0; state.tokens.cacheMiss = u.prompt_cache_miss_tokens ?? 0; state.tokens.totalPrompt += u.prompt_tokens ?? 0; state.tokens.totalCompletion += u.completion_tokens ?? 0; state.tokens.totalTotal += u.total_tokens ?? 0; agent._lastTotalTokens = u.total_tokens ?? 0; },
       onTaskUpdate: items => { state.tasks = items || []; const done = items.filter(i => i.status === "done").length; const cur = items.find(i => i.status === "in_progress"); pushLine("  [task] " + done + "/" + items.length + (cur ? " \u25b6 " + cur.title : ""), C.dim); render(); },
       onTurnEnd: (() => { let n = 0; return () => { if (++n % 5 === 0) { try { saveSession(agent, state.lines); } catch {} } }; })(),
