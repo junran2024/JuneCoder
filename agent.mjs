@@ -519,7 +519,6 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
 
         // Track verify
         if (r.name === 'verify') {
-          try { cb.onSystem('verify', VERIFY_CHECKLIST); } catch { /* ignore */ }
           agent._verifiedThisRun = true;
         }
       }
