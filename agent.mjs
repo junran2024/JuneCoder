@@ -460,6 +460,7 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
         agent.history.push(assistantMsg);
         // Inject checklist for model to review
         agent.history.push({ role: 'user', content: VERIFY_CHECKLIST });
+        try { cb.onSystem('verify', 'Checklist injected:\n' + VERIFY_CHECKLIST); } catch { /* ignore */ }
         agent._mutatedThisRun = false;
         continue; // Loop again to let the model respond to the checklist
       }
