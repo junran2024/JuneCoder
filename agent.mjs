@@ -502,7 +502,7 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
       // Track mutations
       if (!r.error && !r.denied) {
         const tool = toolByName.get(r.name);
-        if (tool && !tool.readonly) {
+        if (tool && ['write', 'edit', 'delete'].includes(r.name)) {
           agent._mutatedThisRun = true;
           // Reset verified flag when new mutations happen
           agent._verifiedThisRun = false;
