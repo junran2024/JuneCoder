@@ -454,9 +454,7 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
     if (!response.toolCalls || response.toolCalls.length === 0) {
       // Guard: if non-readonly tools were used but not verified, inject reminder
       if (agent._mutatedThisRun && !agent._verifiedThisRun && !agent.planMode) {
-        agent._pendingReminders.push(
-          '[System reminder: you used non-readonly tools. ' + VERIFY_CHECKLIST + ']',
-        );
+        agent._pendingReminders.push(VERIFY_CHECKLIST);
         agent._mutatedThisRun = false;
         // Push a reminder for the next turn
         if (agent._pendingReminders.length > 0) {
