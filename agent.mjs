@@ -452,18 +452,11 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
 
     // Step 4: No tool_calls — completion guard
     if (!response.toolCalls || response.toolCalls.length === 0) {
-      // Guard: if non-readonly tools were used but not verified, inject reminder
+      // Guard: if non-readonly tools were used but not verified, inject checklist
       if (agent._mutatedThisRun && !agent._verifiedThisRun && !agent.planMode) {
-        agent._pendingReminders.push(VERIFY_CHECKLIST);
+        agent.history.push({ role: 'user', content: VERIFY_CHECKLIST });
         agent._mutatedThisRun = false;
-        // Push a reminder for the next turn
-        if (agent._pendingReminders.length > 0) {
-          for (const reminder of agent._pendingReminders) {
-            agent.history.push({ role: 'user', content: reminder, transient: true });
-          }
-          agent._pendingReminders = [];
-        }
-        continue; // Loop again to let the model respond to the reminder
+        continue; // Loop again to let the model respond to the checklist
       }
 
       // Push assistant response to history and return
