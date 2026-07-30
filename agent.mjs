@@ -454,7 +454,7 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
     if (!response.toolCalls || response.toolCalls.length === 0) {
       // Guard: if non-readonly tools were used but not verified, inject checklist
       if (agent._mutatedThisRun && !agent._verifiedThisRun && !agent.planMode) {
-        try { cb.onSystem('verify', 'Injecting self-review checklist...'); } catch { /* ignore */ }
+        try { cb.onSystem('verify', VERIFY_CHECKLIST); } catch { /* ignore */ }
         agent.history.push({ role: 'user', content: VERIFY_CHECKLIST });
         agent._mutatedThisRun = false;
         continue; // Loop again to let the model respond to the checklist
