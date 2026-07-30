@@ -17,6 +17,15 @@ export const AUTO_REMINDER =
   '[System reminder: working directory snapshot is provided at session start and after tool executions that may change it.]';
 export const MAX_INSTRUCTION_CHARS = 32_000;
 
+export const VERIFY_CHECKLIST =
+  'Self-review before finishing:\n' +
+  '- Did I run the project\'s tests and do they pass?\n' +
+  '- Did I read every file I changed to catch leftover debug code or stale comments?\n' +
+  '- Do comments and docstrings match what the code actually does?\n' +
+  '- Did I remove placeholder code, TODO stubs, or commented-out experiment blocks?\n' +
+  '- If I used a subagent, did I verify its report against the actual files it touched?\n' +
+  '- Are all task items genuinely done (not just marked done to finish early)?';
+
 // ─── Pure Helpers ────────────────────────────────────────────────────────────
 
 /** Escape XML special characters. */
@@ -443,11 +452,10 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
 
     // Step 4: No tool_calls — completion guard
     if (!response.toolCalls || response.toolCalls.length === 0) {
-      // Guard: if files were mutated but not verified, inject reminder
+      // Guard: if non-readonly tools were used but not verified, inject reminder
       if (agent._mutatedThisRun && !agent._verifiedThisRun && !agent.planMode) {
-        try { cb.onSystem('verify', 'AI is verifying...'); } catch { /* ignore */ }
         agent._pendingReminders.push(
-          '[System reminder: you modified files but have not verified the changes. Call verify before finishing.]',
+          '[System reminder: you used non-readonly tools. ' + VERIFY_CHECKLIST + ']',
         );
         agent._mutatedThisRun = false;
         // Push a reminder for the next turn
@@ -519,6 +527,7 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
 
         // Track verify
         if (r.name === 'verify') {
+          try { cb.onSystem('verify', VERIFY_CHECKLIST); } catch { /* ignore */ }
           agent._verifiedThisRun = true;
         }
       }

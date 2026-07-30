@@ -453,7 +453,7 @@ export async function startTUI(agent, opts = {}) {
     const callbacks = {
       onToken: t => { ensureAssistantLabel(); if (!state.streaming && state.reasoning) { pushLine(state.reasoning, C.reason); state.reasoning = ''; } state.streaming += t; scheduleRender(); },
       onReasoning: t => { ensureAssistantLabel(); if (state.streaming) { pushLine(state.streaming, C.text); state.streaming = ''; } state.reasoning += t; scheduleRender(); },
-      onToolCall: (name, args) => { flushStream(); ensureAssistantLabel(); state.currentTool = name; pushLine("  [tool] " + name + " " + summarize(args), C.tool); },
+      onToolCall: (name, args) => { flushStream(); ensureAssistantLabel(); state.currentTool = name; const summary = summarize(args); pushLine("  [tool] " + name + (summary && summary !== '{}' ? " " + summary : ""), C.tool); },
       onToolResult: (name, output, error) => { state.currentTool = null; const text = error ? "Error: " + error : (output || ""); const stream = state.toolStreams[name]; if (stream) { const tail = stream.trimEnd().slice(-4000); if (tail) pushLine(tail, C.dim); delete state.toolStreams[name]; } pushLine("  [done] " + name + " \u2192 " + sliceByWidth(sanitizeDisplay(text.split("\n")[0]), 100), C.dim); },
       onToolOutput: (name, output, error) => { state.toolStreams[name] = (state.toolStreams[name] ?? "") + (error ? "Error: " + error : (output || "")); scheduleRender(); },
       onPermissionRequest: (tool, args) => askPermission(tool.name || tool, args),
