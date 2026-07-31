@@ -123,7 +123,7 @@ export const planTool = {
 export const skillTool = {
   name: 'skill',
   description:
-    'Manage project skills. Skills are reusable workflows stored in .junecoder/skills/. ' +
+    'Manage project skills. Skills are reusable workflows stored in ~/.junecoder/skills/. ' +
     'Use skill=list to see available skills, skill=load to activate one.',
   parameters: {
     type: 'object',

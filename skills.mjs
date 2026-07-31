@@ -1,5 +1,5 @@
 /**
- * Skills module — loads and formats project skills from .junecoder/skills/.
+ * Skills module — loads and formats skills from ~/.junecoder/skills/.
  *
  * Skill files are markdown (.md) with optional YAML-like frontmatter.
  * Frontmatter keys: name (string), description (string).
@@ -7,7 +7,7 @@
  *
  * Loads from two locations (project overrides global):
  *   ~/.junecoder/skills/     — global, cross-project
- *   cwd/.junecoder/skills/   — project-specific
+ *   cwd/.junecoder/skills/   — project-specific (not advertised by default)
  */
 import { join, basename, extname } from 'node:path';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
