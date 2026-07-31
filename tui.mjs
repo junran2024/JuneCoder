@@ -353,15 +353,6 @@ export async function startTUI(agent, opts = {}) {
       submit(); return;
     }
 
-    if (key.name === "up") {
-      if (state.history.length > 0 && state.historyIndex === -1) { state._savedInput = [...state.input]; state.historyIndex = state.history.length - 1; state.input = [...state.history[state.historyIndex]]; state.cursor = state.input.length; }
-      else if (state.historyIndex > 0) { state.historyIndex--; state.input = [...state.history[state.historyIndex]]; state.cursor = state.input.length; }
-      render(); return;
-    }
-    if (key.name === "down") {
-      if (state.historyIndex >= 0) { state.historyIndex++; if (state.historyIndex >= state.history.length) { state.historyIndex = -1; state.input = state._savedInput || []; state._savedInput = null; } else { state.input = [...state.history[state.historyIndex]]; } state.cursor = state.input.length; }
-      render(); return;
-    }
     if (key.name === "pageup") { state.scroll += (rows - 4); render(); return; }
     if (key.name === "pagedown") { state.scroll = Math.max(0, state.scroll - (rows - 4)); render(); return; }
     editInput(str, key); render();
@@ -540,7 +531,7 @@ export async function startTUI(agent, opts = {}) {
   async function handleSlash(text) {
     const cmd = text.slice(1).split(/\s+/)[0].toLowerCase();
     switch (cmd) {
-      case "help": for (const l of ["/help /goal /plan /auto /key /model /session /clear /tasks /stats /new /quit"]) pushLine(l, C.dim); break;
+      case "help": for (const l of ["/help /goal /plan /auto /key /model /sessions /clear /tasks /stats /new /quit"]) pushLine(l, C.dim); break;
       case "goal": state.goalMode = true; state.status = "Define your goal and press Enter"; render(); break;
       case "plan": agent.planMode = !agent.planMode; pushLine("  Plan mode " + (agent.planMode ? "ON" : "OFF"), C.tool); break;
       case "auto": agent.autoApprove = !agent.autoApprove; pushLine("  Auto-approve " + (agent.autoApprove ? "ON" : "OFF"), agent.autoApprove ? C.warn : C.tool); break;
@@ -552,7 +543,45 @@ export async function startTUI(agent, opts = {}) {
         state.status = "Paste your DeepSeek API key and press Enter";
         break;
       }
-      case "session": { const slots = listSlots(agent.cwd); pushLine("Sessions:", C.tool); if (slots.length === 0) pushLine("  (none)", C.dim); else for (const s of slots) pushLine("  " + s.label, C.dim); break; }
+      case "sessions": case "session": {
+        const slots = listSlots(agent.cwd);
+        if (slots.length === 0) { pushLine("No saved sessions.", C.dim); break; }
+        // Build options: each slot + "Cancel"
+        const options = slots.map(s => "Switch to " + s.label);
+        options.push("Cancel");
+        pushLabel("\u276f Sessions", ansi.bold + C.tool);
+        for (const s of slots) pushLine("  " + s.label, C.dim);
+        state.question = {
+          text: "Switch to which session? (arrow keys to select, Enter to confirm)",
+          options,
+          resolve: (answer) => {
+            if (answer === "Cancel" || !answer) { pushLine("Cancelled.", C.dim); state.status = "Ready"; render(); return; }
+            const idx = options.indexOf(answer);
+            if (idx < 0 || idx >= slots.length) { pushLine("Invalid selection.", C.error); state.status = "Ready"; render(); return; }
+            const slot = slots[idx];
+            const data = switchToSlot(agent.cwd, slot.file);
+            if (!data) { pushLine("Failed to switch session.", C.error); state.status = "Ready"; render(); return; }
+            // Restore the session
+            agent.history = data.history || [];
+            state.lines = [];
+            if (data.displayLines) {
+              for (const raw of data.displayLines) {
+                if (typeof raw === "string") state.lines.push({ text: raw, color: C.text });
+                else if (raw && typeof raw.text === "string") state.lines.push(raw);
+              }
+            }
+            if (data.goal) agent.goal = data.goal;
+            if (data.tasks) { agent.tasks = data.tasks; state.tasks = data.tasks; }
+            if (data.planMode !== undefined) agent.planMode = data.planMode;
+            pushLine("Switched to " + slot.label, C.tool);
+            state.status = "Ready";
+            render();
+          }
+        };
+        state.status = "Select a session";
+        render();
+        break;
+      }
       case "clear": archiveCurrent(agent.cwd); agent.history = []; state.lines = []; state.streaming = ""; state.reasoning = ""; state.tasks = []; agent.tasks = []; agent.goal = null; state.goal = null; state.scroll = 0; pushLine("Cleared (archived).", C.warn); break;
       case "new": archiveCurrent(agent.cwd); agent.history = []; state.lines = []; state.streaming = ""; state.reasoning = ""; state.toolStreams = {}; state.tasks = []; agent.tasks = []; agent.goal = null; state.goal = null; state.scroll = 0; state.tokens = { prompt: 0, completion: 0, total: 0, cacheHit: 0, cacheMiss: 0, totalPrompt: 0, totalCompletion: 0, totalTotal: 0 }; delete agent._lastTotalTokens; pushLine("New session.", C.tool); break;
       case "tasks": if (state.tasks.length === 0) pushLine("No tasks.", C.dim); else for (const t of state.tasks) pushLine("  " + (t.status === "done" ? "\u2713" : t.status === "in_progress" ? "\u25b6" : "\u25cb") + " " + t.title, C.dim); break;
