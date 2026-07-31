@@ -104,7 +104,7 @@ export async function startTUI(agent, opts = {}) {
   const state = {
     lines: [], streaming: "", input: [], cursor: 0, history: [], historyIndex: -1,
     scroll: 0, processing: false, controller: null, permission: null, permissionPreview: [],
-    question: null, goalMode: false, tasks: agent.tasks ?? [], tokens: { prompt: 0, completion: 0, total: 0, cacheHit: 0, cacheMiss: 0, totalPrompt: 0, totalCompletion: 0, totalTotal: 0 },
+    question: null, goalMode: false, goal: agent.goal ? { objective: agent.goal.objective, turn: agent.goal.turnsUsed || 0, max: agent.config?.agent?.goalTurns || 200 } : null, tasks: agent.tasks ?? [], tokens: { prompt: 0, completion: 0, total: 0, cacheHit: 0, cacheMiss: 0, totalPrompt: 0, totalCompletion: 0, totalTotal: 0 },
     reasoning: "", toolStreams: {},
     subOutput: "", currentSub: null, currentTool: null, processingStarted: 0, status: "Ready",
   };
@@ -189,9 +189,10 @@ export async function startTUI(agent, opts = {}) {
         ...state.tasks.filter(t => t.status === "done")].slice(0, MAX_TASK_LINES);
     }
     const taskPanelH = visibleTasks.length;
+    const goalH = state.goal ? 1 : 0;
     const subOutLen = (state.subOutput && state.processing) ? wrapText(state.subOutput, W - 8).slice(-2).length : 0;
     const permPreviewLen = state.permission ? 1 + state.permissionPreview.reduce((s, l) => s + wrapText("  " + l, W - 1).length, 0) : 0;
-    const convH = Math.max(1, rows - 1 - inputBoxH - 1 - taskPanelH - subOutLen - permPreviewLen);
+    const convH = Math.max(1, rows - 1 - inputBoxH - 1 - taskPanelH - goalH - subOutLen - permPreviewLen);
 
     const convLines = [];
     for (const l of state.lines) {
@@ -216,6 +217,13 @@ export async function startTUI(agent, opts = {}) {
       const mark = t.status === "done" ? "\u2713" : t.status === "in_progress" ? "\u25b6" : "\u25cb";
       const color = t.status === "done" ? `${C.dim}${ESC}[9m` : t.status === "in_progress" ? C.tool : C.text;
       out.push(`${color} ${mark} ${sliceByWidth(t.title, W)}${ansi.reset}${ansi.clearLine}`);
+    }
+    if (state.goal) {
+      const g = state.goal;
+      const budgetExhausted = g.turn >= g.max;
+      const color = budgetExhausted ? C.warn : C.dim;
+      const status = budgetExhausted ? ' — budget exhausted' : '';
+      out.push(`${color}Goal: ${sliceByWidth(g.objective, W - 25)}  turn ${g.turn}/${g.max}${status}${ansi.reset}${ansi.clearLine}`);
     }
     if (state.subOutput && state.processing) {
       for (const l of wrapText(state.subOutput, W - 8).slice(-2)) out.push(`${C.dim}[${state.currentSub}] ${l}${ansi.reset}${ansi.clearLine}`);
@@ -266,7 +274,7 @@ export async function startTUI(agent, opts = {}) {
     const inReason = state.permission?.reasonMode;
     if (state.question || (state.permission && !inReason) || (state.processing && !inReason)) process.stdout.write(ansi.hideCursor);
     else {
-      const cursorRow = 1 + convH + taskPanelH + subOutLen + permPreviewLen + 2 + (layout.cursorLine - inputOffset);
+      const cursorRow = 1 + convH + taskPanelH + goalH + subOutLen + permPreviewLen + 2 + (layout.cursorLine - inputOffset);
       const cursorCol = 3 + layout.cursorCol;
       process.stdout.write(ESC + "[" + cursorRow + ";" + cursorCol + "H" + ansi.showCursor);
     }
@@ -448,13 +456,20 @@ export async function startTUI(agent, opts = {}) {
     if (text.startsWith("/")) { await handleSlash(text); return; }
     if (state.goalMode) {
       state.goalMode = false;
-      state.status = "Ready";
-      pushLabel("\u276f Goal:", ansi.bold + C.tool);
-      pushLine(text, C.text);
-      render();
-      return;
+      const goalTurns = agent.config?.agent?.goalTurns || 200;
+      agent.goal = {
+        objective: text,
+        criteria: '',
+        startedAt: Date.now(),
+        status: 'active',
+        turnsUsed: 0,
+        _blockTally: null,
+      };
+      state.goal = { objective: text, turn: 0, max: goalTurns };
+      // Fall through to normal runAgent — onGoalProgress callback will update state.goal
     }
-    pushLabel("\u276f You:", ansi.bold + C.user); pushLine(text, C.text);
+    const isGoal = agent.goal?.status === 'active';
+    pushLabel(isGoal ? "\u276f Goal:" : "\u276f You:", ansi.bold + (isGoal ? C.tool : C.user)); pushLine(text, C.text);
     assistantLabeled = false; state.processing = true; state.status = "Processing...";
     state.streaming = ""; state.reasoning = ""; state.currentTool = null; state.toolStreams = {}; state.subOutput = "";
     state.processingStarted = Date.now(); state.controller = new AbortController();
@@ -469,6 +484,7 @@ export async function startTUI(agent, opts = {}) {
       onQuestion: async (q) => askQuestion(q),
       onCompress: (type) => pushLine(type === 'llm' ? "  [context] Summarized via LLM" : "  [context] Compressed (history truncated)", C.warn),
       onSystem: (type, msg) => { flushStream(); pushLine(`  [${type}] ${msg}`, C.dim); },
+      onGoalProgress: (objective, turn, max) => { state.goal = { objective, turn, max }; render(); },
       onUsage: u => { state.tokens.prompt = u.prompt_tokens ?? 0; state.tokens.completion = u.completion_tokens ?? 0; state.tokens.total = u.total_tokens ?? 0; state.tokens.cacheHit = u.prompt_cache_hit_tokens ?? u.prompt_tokens_details?.cached_tokens ?? 0; state.tokens.cacheMiss = u.prompt_cache_miss_tokens ?? 0; state.tokens.totalPrompt += u.prompt_tokens ?? 0; state.tokens.totalCompletion += u.completion_tokens ?? 0; state.tokens.totalTotal += u.total_tokens ?? 0; agent._lastTotalTokens = u.total_tokens ?? 0; },
       onTaskUpdate: items => { state.tasks = items || []; const done = items.filter(i => i.status === "done").length; const cur = items.find(i => i.status === "in_progress"); pushLine("  [task] " + done + "/" + items.length + (cur ? " \u25b6 " + cur.title : ""), C.dim); render(); },
       onTurnEnd: (() => { let n = 0; return () => { if (++n % 5 === 0) { try { saveSession(agent, state.lines); } catch {} } }; })(),
@@ -483,6 +499,7 @@ export async function startTUI(agent, opts = {}) {
     }
     clearInterval(ticker); state.processing = false; state.controller = null; state.status = "Ready";
     if (state.tasks.length > 0 && state.tasks.every(t => t.status === "done")) { state.tasks = []; agent.tasks = []; }
+    if (agent.goal?.status !== 'active') state.goal = null;
     try { saveSession(agent, state.lines); } catch {} render();
   }
   function flushStream() { if (state.reasoning) { pushLine(state.reasoning, C.reason); state.reasoning = ""; } if (state.streaming) { pushLine(state.streaming, C.text); state.streaming = ""; } }
@@ -505,8 +522,8 @@ export async function startTUI(agent, opts = {}) {
         break;
       }
       case "session": { const slots = listSlots(agent.cwd); pushLine("Sessions:", C.tool); if (slots.length === 0) pushLine("  (none)", C.dim); else for (const s of slots) pushLine("  " + s.label, C.dim); break; }
-      case "clear": archiveCurrent(agent.cwd); agent.history = []; state.lines = []; state.streaming = ""; state.reasoning = ""; state.tasks = []; agent.tasks = []; state.scroll = 0; pushLine("Cleared (archived).", C.warn); break;
-      case "new": archiveCurrent(agent.cwd); agent.history = []; state.lines = []; state.streaming = ""; state.reasoning = ""; state.toolStreams = {}; state.tasks = []; agent.tasks = []; state.scroll = 0; state.tokens = { prompt: 0, completion: 0, total: 0, cacheHit: 0, cacheMiss: 0, totalPrompt: 0, totalCompletion: 0, totalTotal: 0 }; delete agent._lastTotalTokens; pushLine("New session.", C.tool); break;
+      case "clear": archiveCurrent(agent.cwd); agent.history = []; state.lines = []; state.streaming = ""; state.reasoning = ""; state.tasks = []; agent.tasks = []; agent.goal = null; state.goal = null; state.scroll = 0; pushLine("Cleared (archived).", C.warn); break;
+      case "new": archiveCurrent(agent.cwd); agent.history = []; state.lines = []; state.streaming = ""; state.reasoning = ""; state.toolStreams = {}; state.tasks = []; agent.tasks = []; agent.goal = null; state.goal = null; state.scroll = 0; state.tokens = { prompt: 0, completion: 0, total: 0, cacheHit: 0, cacheMiss: 0, totalPrompt: 0, totalCompletion: 0, totalTotal: 0 }; delete agent._lastTotalTokens; pushLine("New session.", C.tool); break;
       case "tasks": if (state.tasks.length === 0) pushLine("No tasks.", C.dim); else for (const t of state.tasks) pushLine("  " + (t.status === "done" ? "\u2713" : t.status === "in_progress" ? "\u25b6" : "\u25cb") + " " + t.title, C.dim); break;
       case "stats": pushLine("Last call: \u2191" + fmtK(state.tokens.prompt) + " \u2193" + fmtK(state.tokens.completion) + " | Session total: \u2191" + fmtK(state.tokens.totalPrompt) + " \u2193" + fmtK(state.tokens.totalCompletion) + " \u2211" + fmtK(state.tokens.totalTotal) + " | History: " + agent.history.length + " msgs" + (agent._lastTotalTokens ? " (" + fmtK(agent._lastTotalTokens) + " t)" : "") + " | Lines: " + state.lines.length, C.dim); break;
       case "quit": case "exit": cleanup(); process.exit(0); return;
@@ -523,6 +540,7 @@ export async function startTUI(agent, opts = {}) {
     }
     if (restored.history) agent.history = restored.history;
     if (restored.goal) agent.goal = restored.goal;
+    if (restored.tasks) { agent.tasks = restored.tasks; state.tasks = restored.tasks; }
     if (restored.planMode !== undefined) agent.planMode = restored.planMode;
     state.status = "Session restored";
   } else if (!setupMode) {

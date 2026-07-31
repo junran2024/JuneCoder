@@ -185,33 +185,39 @@ export const goalTool = {
           objective: args.objective,
           criteria: args.criteria || '',
           startedAt: Date.now(),
-          attempts: 0,
+          status: 'active',
+          turnsUsed: 0,
+          _blockTally: null, // { reason, count } — consecutive same-condition blocks
         };
-        agent._blockTally = {};
-        return `Goal set: "${args.objective}"\nCriteria: ${args.criteria || '(none)'}`;
+        return `Goal set: "${agent.goal.objective}"\nDone when: ${agent.goal.criteria || '(no criteria)'}. Use task tool to break it down, then work autonomously.`;
       }
 
       case 'complete': {
-        if (!agent.goal) return 'No active goal.';
-        const g = agent.goal;
-        agent.goal = null;
-        agent._blockTally = {};
-        return `Goal completed: "${g.objective}"`;
+        if (!agent.goal || agent.goal.status !== 'active') return `Error: no active goal (current: ${agent.goal?.status ?? 'none'}).`;
+        if (agent._mutatedThisRun && !agent._verifiedThisRun) {
+          return 'Error: files were modified but verify has not run. Run verify before marking goal complete.';
+        }
+        agent.goal.status = 'complete';
+        return `Goal marked complete: ${agent.goal.objective}\nSummarize the evidence in your next message.`;
       }
 
       case 'blocked': {
-        if (!agent.goal) return 'No active goal.';
+        if (!agent.goal || agent.goal.status !== 'active') return `Error: no active goal (current: ${agent.goal?.status ?? 'none'}).`;
         if (!args.reason) return 'Error: reason is required for blocked action.';
-        agent.goal.attempts = (agent.goal.attempts || 0) + 1;
-        return `Goal blocked (attempt ${agent.goal.attempts}): ${args.reason}\n` +
-          'Try a different approach. After 3 genuine attempts, the goal will be audited.';
+        const tally = agent.goal._blockTally;
+        const count = (tally?.reason === args.reason) ? tally.count + 1 : 1;
+        agent.goal._blockTally = { reason: args.reason, count };
+        if (count < 3) {
+          return `Blocked not accepted yet (${count}/3 for this condition). Try a genuinely different approach — report blocked only when the same condition stops you ${3 - count} more time(s).`;
+        }
+        agent.goal.status = 'blocked';
+        return `Goal blocked after 3 attempts: ${args.reason}\nExplain the blocker to the user — what you tried and what you need.`;
       }
 
       case 'cancel': {
         if (!agent.goal) return 'No active goal.';
         const obj = agent.goal.objective;
         agent.goal = null;
-        agent._blockTally = {};
         return `Goal cancelled: "${obj}"`;
       }
 

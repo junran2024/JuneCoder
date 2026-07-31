@@ -34,6 +34,7 @@ export function saveSession(agent, displayLines) {
       displayLines: displayLines || [],
       planMode: agent.planMode,
       goal: agent.goal,
+      tasks: agent.tasks,
       savedAt: Date.now(),
     };
     writeFileSync(sessionPath(agent.cwd), JSON.stringify(data, null, 2), 'utf-8');

@@ -151,26 +151,56 @@ describe('goalTool', () => {
     );
     assert.strictEqual(agent.goal.objective, 'Fix all bugs');
     assert.strictEqual(agent.goal.criteria, 'npm test passes');
+    assert.strictEqual(agent.goal.status, 'active');
+    assert.strictEqual(agent.goal.turnsUsed, 0);
+    assert.strictEqual(agent.goal._blockTally, null);
     assert.ok(result.includes('Goal set'));
   });
 
   it('completes a goal', async () => {
     const agent = freshAgent();
-    agent.goal = { objective: 'Test', criteria: '', startedAt: Date.now(), attempts: 0 };
+    agent.goal = { objective: 'Test', criteria: '', startedAt: Date.now(), status: 'active', turnsUsed: 0, _blockTally: null };
+    agent._mutatedThisRun = false;
     const result = await goalTool.execute({ action: 'complete' }, agent);
-    assert.strictEqual(agent.goal, null);
-    assert.ok(result.includes('Goal completed'));
+    assert.strictEqual(agent.goal.status, 'complete');
+    assert.ok(result.includes('Goal marked complete'));
   });
 
-  it('blocks a goal', async () => {
+  it('refuses complete when mutated but not verified', async () => {
     const agent = freshAgent();
-    agent.goal = { objective: 'Hard', criteria: '', startedAt: Date.now(), attempts: 0 };
-    const result = await goalTool.execute(
-      { action: 'blocked', reason: 'API down' },
-      agent,
-    );
-    assert.strictEqual(agent.goal.attempts, 1);
-    assert.ok(result.includes('API down'));
+    agent.goal = { objective: 'Test', criteria: '', startedAt: Date.now(), status: 'active', turnsUsed: 0, _blockTally: null };
+    agent._mutatedThisRun = true;
+    agent._verifiedThisRun = false;
+    const result = await goalTool.execute({ action: 'complete' }, agent);
+    assert.ok(result.includes('Error'));
+    assert.strictEqual(agent.goal.status, 'active');
+  });
+
+  it('blocks a goal after 3 consecutive same-condition attempts', async () => {
+    const agent = freshAgent();
+    agent.goal = { objective: 'Hard', criteria: '', startedAt: Date.now(), status: 'active', turnsUsed: 0, _blockTally: null };
+    // Attempt 1
+    let result = await goalTool.execute({ action: 'blocked', reason: 'API down' }, agent);
+    assert.ok(result.includes('1/3'));
+    assert.strictEqual(agent.goal.status, 'active');
+    // Attempt 2 — same reason
+    result = await goalTool.execute({ action: 'blocked', reason: 'API down' }, agent);
+    assert.ok(result.includes('2/3'));
+    assert.strictEqual(agent.goal.status, 'active');
+    // Attempt 3 — same reason, now accepted
+    result = await goalTool.execute({ action: 'blocked', reason: 'API down' }, agent);
+    assert.ok(result.includes('blocked after 3 attempts'));
+    assert.strictEqual(agent.goal.status, 'blocked');
+  });
+
+  it('resets block tally when reason changes', async () => {
+    const agent = freshAgent();
+    agent.goal = { objective: 'Hard', criteria: '', startedAt: Date.now(), status: 'active', turnsUsed: 0, _blockTally: null };
+    await goalTool.execute({ action: 'blocked', reason: 'API down' }, agent);
+    await goalTool.execute({ action: 'blocked', reason: 'API down' }, agent);
+    // Different reason — tally resets
+    const result = await goalTool.execute({ action: 'blocked', reason: 'Different issue' }, agent);
+    assert.ok(result.includes('1/3'));
   });
 
   it('cancels a goal', async () => {

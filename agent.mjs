@@ -6,9 +6,9 @@ import { loadSkills, formatSkillListing } from './skills.mjs';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-export const DEFAULT_MAX_TURNS = 50;
+export const DEFAULT_MAX_TURNS = 100;
 export const DEFAULT_SUBAGENT_TURNS = 20;
-export const DEFAULT_GOAL_TURNS = 30;
+export const DEFAULT_GOAL_TURNS = 200;
 export const MIN_REPORT_CHARS = 50;
 export const REPORT_CONTINUATION = '... [content truncated]';
 export const TOOL_RESULT_OFFLOAD_LIMIT = 8000;
@@ -314,7 +314,6 @@ export function createAgent(opts) {
     _verifiedThisRun: false,
     _pendingReminders: [],
     _recentCallSigs: [],
-    _blockTally: {},
     _mcpProcesses: [],
     _compressFailures: 0,
     _depth: opts.depth || 0,
@@ -344,7 +343,9 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
 
   const maxTurns = depth > 0
     ? (agent.config.agent?.subagentTurns || DEFAULT_SUBAGENT_TURNS)
-    : (agent.config.agent?.maxTurns || DEFAULT_MAX_TURNS);
+    : (agent.goal?.status === 'active'
+        ? (agent.config.agent?.goalTurns || DEFAULT_GOAL_TURNS)
+        : (agent.config.agent?.maxTurns || DEFAULT_MAX_TURNS));
 
   const compactThreshold = agent.config.agent?.compactThreshold || 750_000;
 
@@ -578,18 +579,21 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
       }
     }
 
-    // Step 10: Goal progress tracking
-    if (agent.goal) {
-      const goalTurns = agent.config.agent?.goalTurns || DEFAULT_GOAL_TURNS;
-      const progress = Math.floor((turn / goalTurns) * 100);
-      if (turn > 0 && turn % 10 === 0) {
-        try { cb.onSystem('goal', `Progress: ${turn}/${goalTurns} — "${agent.goal.objective}"`); } catch { /* ignore */ }
-        agent.history.push({
-          role: 'user',
-          content: `[Goal progress: turn ${turn}/${goalTurns} (${Math.min(progress, 100)}%). Objective: "${agent.goal.objective}". Criteria: ${agent.goal.criteria || 'none'}]`,
-          transient: true,
-        });
-      }
+    // Step 10: Goal progress tracking (every turn when goal active)
+    if (agent.goal?.status === 'active') {
+      agent.goal.turnsUsed = (agent.goal.turnsUsed || 0) + 1;
+      const budget = agent.config.agent?.goalTurns || DEFAULT_GOAL_TURNS;
+      const used = agent.goal.turnsUsed;
+      const pct = Math.floor((used / budget) * 100);
+      try { cb.onGoalProgress?.(agent.goal.objective, used, budget); } catch { /* ignore */ }
+      agent.history.push({
+        role: 'user',
+        content:
+          `[Goal: turn ${used}/${budget} (${Math.min(pct, 100)}%). Objective: "${agent.goal.objective}". Criteria: ${agent.goal.criteria || 'none'}.\n` +
+          (pct >= 90 ? 'WARNING: near turn budget — finish current task and report status.\n' : '') +
+          `Mark complete only when criteria are met. Mark blocked only after 3 genuine attempts against the same condition.]`,
+        transient: true,
+      });
     }
 
     // Step 11: Task list reminder (every 10 turns, top-level only)
