@@ -42,12 +42,12 @@ export const fetchTool = {
           .replace(/\s+/g, ' ')
           .trim();
 
-        return stripped.slice(0, 50_000) +
-          (stripped.length > 50_000 ? '\n\n[truncated]' : '');
+        return stripped.slice(0, 200_000) +
+          (stripped.length > 200_000 ? '\n\n[truncated]' : '');
       }
 
-      return text.slice(0, 50_000) +
-        (text.length > 50_000 ? '\n\n[truncated]' : '');
+      return text.slice(0, 200_000) +
+        (text.length > 200_000 ? '\n\n[truncated]' : '');
     } catch (err) {
       return `Error fetching URL: ${err.message}`;
     }
