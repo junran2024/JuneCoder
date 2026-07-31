@@ -5,12 +5,16 @@
  * Frontmatter keys: name (string), description (string).
  * Without frontmatter, name derives from filename and description from first line.
  *
+ * Two layout styles are supported:
+ *   skills/<name>.md           — flat: single .md file
+ *   skills/<name>/SKILL.md     — subdirectory: SKILL.md + optional references/
+ *
  * Loads from two locations (project overrides global):
  *   ~/.junecoder/skills/     — global, cross-project
  *   cwd/.junecoder/skills/   — project-specific (not advertised by default)
  */
 import { join, basename, extname } from 'node:path';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 
 /**
@@ -41,7 +45,7 @@ export function loadSkills(cwd) {
   return skills;
 }
 
-/** Read .md files from a single skills directory. */
+/** Read .md files and subdirectory SKILL.md entries from a skills directory. */
 function readSkillsDir(skillsDir) {
   if (!existsSync(skillsDir)) return [];
 
@@ -54,20 +58,34 @@ function readSkillsDir(skillsDir) {
 
   const skills = [];
   for (const ent of entries) {
-    if (!ent.isFile()) continue;
-    const ext = extname(ent.name).toLowerCase();
-    if (ext !== '.md') continue;
+    if (ent.isFile()) {
+      // Flat .md file
+      const ext = extname(ent.name).toLowerCase();
+      if (ext !== '.md') continue;
 
-    const filePath = join(skillsDir, ent.name);
-    let content;
-    try {
-      content = readFileSync(filePath, 'utf-8');
-    } catch {
-      continue;
+      const filePath = join(skillsDir, ent.name);
+      let content;
+      try {
+        content = readFileSync(filePath, 'utf-8');
+      } catch {
+        continue;
+      }
+
+      const { name, description } = parseFrontmatter(content, ent.name);
+      skills.push({ name, description, path: filePath });
+    } else if (ent.isDirectory()) {
+      // Subdirectory with SKILL.md entry point
+      const skillPath = join(skillsDir, ent.name, 'SKILL.md');
+      if (!existsSync(skillPath)) continue;
+      let content;
+      try {
+        content = readFileSync(skillPath, 'utf-8');
+      } catch {
+        continue;
+      }
+      const { name, description } = parseFrontmatter(content, ent.name);
+      skills.push({ name, description, path: skillPath });
     }
-
-    const { name, description } = parseFrontmatter(content, ent.name);
-    skills.push({ name, description, path: filePath });
   }
   return skills;
 }
@@ -97,19 +115,21 @@ export function readSkill(cwd, name) {
   for (const skillsDir of dirs) {
     if (!existsSync(skillsDir)) continue;
 
-    // Try exact name match (with/without .md extension)
+    // Try exact name match (flat .md or subdirectory SKILL.md)
     const candidates = [
       join(skillsDir, name),
       join(skillsDir, name + '.md'),
+      join(skillsDir, name, 'SKILL.md'),
     ];
 
     for (const cand of candidates) {
-      if (existsSync(cand)) {
-        try {
-          return readFileSync(cand, 'utf-8');
-        } catch {
-          return null;
-        }
+      let st;
+      try { st = statSync(cand); } catch { continue; }
+      if (!st.isFile()) continue;
+      try {
+        return readFileSync(cand, 'utf-8');
+      } catch {
+        return null;
       }
     }
 
@@ -122,14 +142,26 @@ export function readSkill(cwd, name) {
     }
 
     for (const ent of entries) {
-      if (!ent.isFile() || extname(ent.name).toLowerCase() !== '.md') continue;
-      const filePath = join(skillsDir, ent.name);
-      try {
-        const content = readFileSync(filePath, 'utf-8');
-        const fm = parseFrontmatter(content, ent.name);
-        if (fm.name === name) return content;
-      } catch {
-        continue;
+      if (ent.isFile() && extname(ent.name).toLowerCase() === '.md') {
+        const filePath = join(skillsDir, ent.name);
+        try {
+          const content = readFileSync(filePath, 'utf-8');
+          const fm = parseFrontmatter(content, ent.name);
+          if (fm.name === name) return content;
+        } catch {
+          continue;
+        }
+      }
+      if (ent.isDirectory()) {
+        const skillPath = join(skillsDir, ent.name, 'SKILL.md');
+        if (!existsSync(skillPath)) continue;
+        try {
+          const content = readFileSync(skillPath, 'utf-8');
+          const fm = parseFrontmatter(content, ent.name);
+          if (fm.name === name) return content;
+        } catch {
+          continue;
+        }
       }
     }
   }

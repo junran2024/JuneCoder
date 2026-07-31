@@ -124,7 +124,9 @@ export const skillTool = {
   name: 'skill',
   description:
     'Manage project skills. Skills are reusable workflows stored in ~/.junecoder/skills/. ' +
-    'Use skill=list to see available skills, skill=load to activate one.',
+    'Use skill=list to see available skills, skill=load to activate one. ' +
+    'Skills support two layouts: flat (~/.junecoder/skills/<name>.md) or subdirectory (~/.junecoder/skills/<name>/SKILL.md) with optional references/. ' +
+    'To install a skill from an external source, clone/copy its skill files into ~/.junecoder/skills/ using either layout above.',
   parameters: {
     type: 'object',
     properties: {

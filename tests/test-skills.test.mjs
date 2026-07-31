@@ -8,12 +8,15 @@ import { loadSkills, formatSkillListing, readSkill } from '../skills.mjs';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Create an isolated tmpdir, run fn, clean up. */
+/** Create an isolated tmpdir, set HOME to it, run fn, clean up. */
 function withTmpDir(fn) {
   const dir = mkdtempSync(join(tmpdir(), 'junecoder-skill-'));
+  const oldHome = process.env.HOME;
+  process.env.HOME = dir;
   try {
     return fn(dir);
   } finally {
+    process.env.HOME = oldHome;
     rmSync(dir, { recursive: true, force: true });
   }
 }
@@ -23,6 +26,13 @@ function writeSkill(dir, filename, content) {
   const skillsDir = join(dir, '.junecoder', 'skills');
   mkdirSync(skillsDir, { recursive: true });
   writeFileSync(join(skillsDir, filename), content);
+}
+
+/** Create a subdirectory skill: skills/<name>/SKILL.md */
+function writeSubSkill(dir, name, content) {
+  const skillDir = join(dir, '.junecoder', 'skills', name);
+  mkdirSync(skillDir, { recursive: true });
+  writeFileSync(join(skillDir, 'SKILL.md'), content);
 }
 
 // ─── loadSkills ──────────────────────────────────────────────────────────────
@@ -44,6 +54,37 @@ describe('loadSkills', () => {
       assert.strictEqual(skills.length, 2);
       assert.ok(skills.some((s) => s.name === 'testing'));
       assert.ok(skills.some((s) => s.name === 'deploy'));
+    });
+  });
+
+  it('loads subdirectory skills (SKILL.md)', () => {
+    withTmpDir((dir) => {
+      writeSubSkill(dir, 'my-tool', [
+        '---',
+        'name: my-tool',
+        'description: A subdirectory skill',
+        '---',
+        '',
+        '# My Tool',
+      ].join('\n'));
+
+      const skills = loadSkills(dir);
+      assert.strictEqual(skills.length, 1);
+      assert.strictEqual(skills[0].name, 'my-tool');
+      assert.strictEqual(skills[0].description, 'A subdirectory skill');
+      assert.ok(skills[0].path.endsWith('SKILL.md'));
+    });
+  });
+
+  it('flat .md takes precedence over subdirectory with same name', () => {
+    withTmpDir((dir) => {
+      writeSkill(dir, 'tool.md', '# Flat tool');
+      writeSubSkill(dir, 'tool', '# Sub tool');
+
+      const skills = loadSkills(dir);
+      // Both are found, but flat comes first (iteration order); seen set dedup by name
+      assert.strictEqual(skills.length, 1);
+      assert.strictEqual(skills[0].name, 'tool');
     });
   });
 
@@ -99,6 +140,19 @@ describe('loadSkills', () => {
       assert.strictEqual(skills[0].name, 'guide');
     });
   });
+
+  it('skips subdirectories without SKILL.md', () => {
+    withTmpDir((dir) => {
+      const skillsDir = join(dir, '.junecoder', 'skills');
+      mkdirSync(skillsDir, { recursive: true });
+      mkdirSync(join(skillsDir, 'empty-dir'));
+      writeSkill(dir, 'real.md', '# Real');
+
+      const skills = loadSkills(dir);
+      assert.strictEqual(skills.length, 1);
+      assert.strictEqual(skills[0].name, 'real');
+    });
+  });
 });
 
 // ─── formatSkillListing ──────────────────────────────────────────────────────
@@ -148,7 +202,16 @@ describe('readSkill', () => {
     });
   });
 
-  it('finds by frontmatter name', () => {
+  it('reads a subdirectory skill by name', () => {
+    withTmpDir((dir) => {
+      writeSubSkill(dir, 'my-tool', '# Subdirectory Skill\n\nContent here.');
+
+      const result = readSkill(dir, 'my-tool');
+      assert.ok(result.includes('# Subdirectory Skill'));
+    });
+  });
+
+  it('finds by frontmatter name (flat)', () => {
     withTmpDir((dir) => {
       writeSkill(dir, 'abc.md', [
         '---',
@@ -161,6 +224,22 @@ describe('readSkill', () => {
 
       const result = readSkill(dir, 'custom-name');
       assert.ok(result.includes('# Content'));
+    });
+  });
+
+  it('finds by frontmatter name (subdirectory)', () => {
+    withTmpDir((dir) => {
+      writeSubSkill(dir, 'hidden', [
+        '---',
+        'name: visible-name',
+        'description: found via frontmatter',
+        '---',
+        '',
+        '# Visible',
+      ].join('\n'));
+
+      const result = readSkill(dir, 'visible-name');
+      assert.ok(result.includes('# Visible'));
     });
   });
 

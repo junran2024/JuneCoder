@@ -122,9 +122,15 @@ describe('planTool', () => {
 
 describe('skillTool', () => {
   it('lists skills (stub returns empty)', async () => {
-    const agent = freshAgent();
-    const result = await skillTool.execute({ action: 'list' }, agent);
-    assert.ok(result.includes('No skills loaded'));
+    const oldHome = process.env.HOME;
+    process.env.HOME = tmpdir();
+    try {
+      const agent = freshAgent();
+      const result = await skillTool.execute({ action: 'list' }, agent);
+      assert.ok(result.includes('No skills loaded'));
+    } finally {
+      process.env.HOME = oldHome;
+    }
   });
 
   it('load skill not found', async () => {
