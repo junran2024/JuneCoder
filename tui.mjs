@@ -104,7 +104,7 @@ export async function startTUI(agent, opts = {}) {
   const state = {
     lines: [], streaming: "", input: [], cursor: 0, history: [], historyIndex: -1,
     scroll: 0, processing: false, controller: null, permission: null, permissionPreview: [],
-    question: null, tasks: agent.tasks ?? [], tokens: { prompt: 0, completion: 0, total: 0, cacheHit: 0, cacheMiss: 0, totalPrompt: 0, totalCompletion: 0, totalTotal: 0 },
+    question: null, goalMode: false, tasks: agent.tasks ?? [], tokens: { prompt: 0, completion: 0, total: 0, cacheHit: 0, cacheMiss: 0, totalPrompt: 0, totalCompletion: 0, totalTotal: 0 },
     reasoning: "", toolStreams: {},
     subOutput: "", currentSub: null, currentTool: null, processingStarted: 0, status: "Ready",
   };
@@ -230,6 +230,7 @@ export async function startTUI(agent, opts = {}) {
     else if (state.permission?.reasonMode) { borderColor = C.warn; title = " Denied \u2014 why? (Enter to send, Esc to skip) "; }
     else if (state.permission) { borderColor = C.warn; title = state.permission.name === "continue" ? " Continue? (y/n) " : " Allow " + state.permission.name + "? (y/n/a) "; }
     else if (state.processing) title = " Processing... ";
+    else if (state.goalMode) title = " Define your goal ";
     else if (setupMode) title = " API Key ";
     else title = " Input ";
     const topBorder = "\u256d\u2500" + title + "\u2500".repeat(Math.max(0, W - 3 - stringWidth(title))) + "\u256e";
@@ -445,6 +446,14 @@ export async function startTUI(agent, opts = {}) {
 
     state.input = []; state.cursor = 0; state.history.push(text); state.historyIndex = -1; state.scroll = 0;
     if (text.startsWith("/")) { await handleSlash(text); return; }
+    if (state.goalMode) {
+      state.goalMode = false;
+      state.status = "Ready";
+      pushLabel("\u276f Goal:", ansi.bold + C.tool);
+      pushLine(text, C.text);
+      render();
+      return;
+    }
     pushLabel("\u276f You:", ansi.bold + C.user); pushLine(text, C.text);
     assistantLabeled = false; state.processing = true; state.status = "Processing...";
     state.streaming = ""; state.reasoning = ""; state.currentTool = null; state.toolStreams = {}; state.subOutput = "";
@@ -483,7 +492,8 @@ export async function startTUI(agent, opts = {}) {
   async function handleSlash(text) {
     const cmd = text.slice(1).split(/\s+/)[0].toLowerCase();
     switch (cmd) {
-      case "help": for (const l of ["/help /plan /auto /key /model /session /clear /tasks /stats /new /quit"]) pushLine(l, C.dim); break;
+      case "help": for (const l of ["/help /goal /plan /auto /key /model /session /clear /tasks /stats /new /quit"]) pushLine(l, C.dim); break;
+      case "goal": state.goalMode = true; state.status = "Define your goal and press Enter"; render(); break;
       case "plan": agent.planMode = !agent.planMode; pushLine("  Plan mode " + (agent.planMode ? "ON" : "OFF"), C.tool); break;
       case "auto": agent.autoApprove = !agent.autoApprove; pushLine("  Auto-approve " + (agent.autoApprove ? "ON" : "OFF"), agent.autoApprove ? C.warn : C.tool); break;
       case "model": pushLine("  Model: " + agent.provider.model + " | Provider: " + (agent.provider.type || "?"), C.dim); break;
