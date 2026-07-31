@@ -469,7 +469,7 @@ export async function startTUI(agent, opts = {}) {
       const goalText = text;
       // Ask about auto permissions before launching the goal
       state.question = {
-        text: "Auto permissions?",
+        text: "Auto permissions? (y/n)",
         options: ["No (ask each time)", "Yes (run uninterrupted)"],
         selected: 1,
         resolve: async (answer) => {
