@@ -361,7 +361,8 @@ export async function startTUI(agent, opts = {}) {
 
     if (key.name === "pageup") { state.scroll += (rows - 4); render(); return; }
     if (key.name === "pagedown") { state.scroll = Math.max(0, state.scroll - (rows - 4)); render(); return; }
-    editInput(str, key); render();
+    editInput(str, key);
+    if (isPasteBurst) scheduleRender(); else render();
   });
 
   function editInput(str, key) {
