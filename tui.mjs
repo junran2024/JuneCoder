@@ -370,12 +370,35 @@ export async function startTUI(agent, opts = {}) {
     if (key.name === "delete") { if (state.cursor < state.input.length) state.input.splice(state.cursor, 1); return; }
     if (key.name === "left") { if (state.cursor > 0) state.cursor--; return; }
     if (key.name === "right") { if (state.cursor < state.input.length) state.cursor++; return; }
+    if (key.name === "up") { moveCursorVert(-1); return; }
+    if (key.name === "down") { moveCursorVert(1); return; }
     if (key.name === "home") { state.cursor = 0; return; }
     if (key.name === "end") { state.cursor = state.input.length; return; }
     if (key.name === "k" && key.ctrl) { state.input = state.input.slice(0, state.cursor); return; }
     if (key.name === "u" && key.ctrl) { state.input = state.input.slice(state.cursor); state.cursor = 0; return; }
     if (key.name === "w" && key.ctrl) { while (state.cursor > 0 && state.input[state.cursor-1] === " ") { state.input.splice(state.cursor-1, 1); state.cursor--; } while (state.cursor > 0 && state.input[state.cursor-1] !== " ") { state.input.splice(state.cursor-1, 1); state.cursor--; } return; }
     if (str && str.length > 0 && !key.ctrl && !key.meta && str !== "\r" && str !== "\n") { for (const ch of str) { state.input.splice(state.cursor, 0, ch); state.cursor++; } }
+  }
+
+  function moveCursorVert(dir) {
+    let lineStart = state.cursor;
+    while (lineStart > 0 && state.input[lineStart - 1] !== "\n") lineStart--;
+    const col = state.cursor - lineStart;
+    if (dir < 0) {
+      if (lineStart === 0) return;
+      let prevEnd = lineStart - 1;
+      let prevStart = prevEnd;
+      while (prevStart > 0 && state.input[prevStart - 1] !== "\n") prevStart--;
+      state.cursor = prevStart + Math.min(col, prevEnd - prevStart);
+    } else {
+      let lineEnd = state.cursor;
+      while (lineEnd < state.input.length && state.input[lineEnd] !== "\n") lineEnd++;
+      if (lineEnd >= state.input.length) return;
+      let nextStart = lineEnd + 1;
+      let nextEnd = nextStart;
+      while (nextEnd < state.input.length && state.input[nextEnd] !== "\n") nextEnd++;
+      state.cursor = nextStart + Math.min(col, nextEnd - nextStart);
+    }
   }
 
   // ─── First-run setup: capture API key from input box ──────────────────────────
