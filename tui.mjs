@@ -549,8 +549,6 @@ export async function startTUI(agent, opts = {}) {
         // Build options: each slot + "Cancel"
         const options = slots.map(s => "Switch to " + s.label);
         options.push("Cancel");
-        pushLabel("\u276f Sessions", ansi.bold + C.tool);
-        for (const s of slots) pushLine("  " + s.label, C.dim);
         state.question = {
           text: "Switch to which session? (arrow keys to select, Enter to confirm)",
           options,
