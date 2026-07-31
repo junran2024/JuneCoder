@@ -13,7 +13,7 @@ describe('defaultConfig', () => {
     const cfg = defaultConfig();
     assert.strictEqual(cfg.agent.maxTurns, 50);
     assert.strictEqual(cfg.agent.subagentTurns, 20);
-    assert.strictEqual(cfg.agent.goalTurns, 30);
+    assert.strictEqual(cfg.agent.goalTurns, 200);
     assert.ok(cfg.agent.contextWindow > 0);
     assert.ok(cfg.agent.compactThreshold > 0);
   });

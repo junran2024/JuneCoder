@@ -41,7 +41,7 @@ export function defaultConfig() {
     agent: {
       maxTurns: 50,
       subagentTurns: 20,
-      goalTurns: 30,
+      goalTurns: 200,
       contextWindow: 1_000_000, // assumed model context window (estimated tokens)
       compactThreshold: 750_000, // compress at 75% of contextWindow
     },

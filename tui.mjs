@@ -221,7 +221,7 @@ export async function startTUI(agent, opts = {}) {
     if (state.goal) {
       const g = state.goal;
       const budgetExhausted = g.turn >= g.max;
-      const color = budgetExhausted ? C.warn : C.dim;
+      const color = budgetExhausted ? C.warn : yellow;
       const status = budgetExhausted ? ' — budget exhausted' : '';
       out.push(`${color}Goal: ${sliceByWidth(g.objective, W - 25)}  turn ${g.turn}/${g.max}${status}${ansi.reset}${ansi.clearLine}`);
     }
