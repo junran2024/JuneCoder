@@ -29,6 +29,9 @@ const ansi = {
 };
 const orange = `${ESC}[38;2;246;168;36m`;
 const yellow = `${ESC}[38;2;253;224;71m`;
+const pasteYellow = `${ESC}[38;2;240;220;130m`;
+const PASTE_TRUNCATE_LINES = 50;
+const PASTE_PREVIEW_LINES = 80;
 const C = {
   user: yellow, assistant: orange, text: ansi.fg(7),
   reason: `${ESC}[2m${ESC}[3m`, tool: orange,
@@ -490,7 +493,14 @@ export async function startTUI(agent, opts = {}) {
 
   async function doRun(text) {
     const isGoal = agent.goal?.status === 'active';
-    pushLabel(isGoal ? "\u276f Goal:" : "\u276f You:", ansi.bold + (isGoal ? C.tool : C.user)); pushLine(text, C.text);
+    pushLabel(isGoal ? "\u276f Goal:" : "\u276f You:", ansi.bold + (isGoal ? C.tool : C.user));
+    const pasteLines = text.split("\n").length;
+    if (pasteLines <= PASTE_TRUNCATE_LINES) {
+      pushLine(text, C.text);
+    } else {
+      const preview = text.split("\n").slice(0, PASTE_PREVIEW_LINES).join("\n");
+      pushLine(preview + `\n\u2026 (${pasteLines} lines total)`, pasteYellow);
+    }
     assistantLabeled = false; state.processing = true; state.status = "Processing...";
     state.streaming = ""; state.reasoning = ""; state.currentTool = null; state.toolStreams = {}; state.subOutput = "";
     state.processingStarted = Date.now(); state.controller = new AbortController();
