@@ -328,6 +328,16 @@ export async function startTUI(agent, opts = {}) {
         if (state.question.selected < 0) state.question.selected = state.question.options.length - 1;
         if (state.question.selected >= state.question.options.length) state.question.selected = 0; render(); return;
       }
+      // Direct y/n shortcuts for yes/no questions
+      if (state.question.options.length > 0 && (key.name === "y" || key.name === "n")) {
+        const target = key.name === "y" ? "yes" : "no";
+        const idx = state.question.options.findIndex(opt => opt.toLowerCase().startsWith(target));
+        if (idx >= 0) {
+          const answer = state.question.options[idx];
+          state.input = []; state.cursor = 0; const resolve = state.question.resolve; state.question = null;
+          resolve(answer); state.status = state.processing ? "Processing..." : "Ready"; render(); return;
+        }
+      }
       if (state.question.options.length === 0) { editInput(str, key); render(); return; }
       return;
     }
@@ -456,18 +466,38 @@ export async function startTUI(agent, opts = {}) {
     if (text.startsWith("/")) { await handleSlash(text); return; }
     if (state.goalMode) {
       state.goalMode = false;
-      const goalTurns = agent.config?.agent?.goalTurns || 200;
-      agent.goal = {
-        objective: text,
-        criteria: '',
-        startedAt: Date.now(),
-        status: 'active',
-        turnsUsed: 0,
-        _blockTally: null,
+      const goalText = text;
+      // Ask about auto permissions before launching the goal
+      state.question = {
+        text: "Auto permissions?",
+        options: ["No (ask each time)", "Yes (run uninterrupted)"],
+        selected: 1,
+        resolve: async (answer) => {
+          if (answer.startsWith("Yes")) {
+            agent.autoApprove = true;
+            pushLine("  [auto] Auto-approve ON for goal mode.", C.warn);
+          }
+          const goalTurns = agent.config?.agent?.goalTurns || 200;
+          agent.goal = {
+            objective: goalText,
+            criteria: '',
+            startedAt: Date.now(),
+            status: 'active',
+            turnsUsed: 0,
+            _blockTally: null,
+          };
+          state.goal = { objective: goalText, turn: 0, max: goalTurns };
+          await doRun(goalText);
+        }
       };
-      state.goal = { objective: text, turn: 0, max: goalTurns };
-      // Fall through to normal runAgent — onGoalProgress callback will update state.goal
+      state.status = "Auto permissions?";
+      render();
+      return;
     }
+    await doRun(text);
+  }
+
+  async function doRun(text) {
     const isGoal = agent.goal?.status === 'active';
     pushLabel(isGoal ? "\u276f Goal:" : "\u276f You:", ansi.bold + (isGoal ? C.tool : C.user)); pushLine(text, C.text);
     assistantLabeled = false; state.processing = true; state.status = "Processing...";
@@ -502,6 +532,7 @@ export async function startTUI(agent, opts = {}) {
     if (agent.goal?.status !== 'active') state.goal = null;
     try { saveSession(agent, state.lines); } catch {} render();
   }
+
   function flushStream() { if (state.reasoning) { pushLine(state.reasoning, C.reason); state.reasoning = ""; } if (state.streaming) { pushLine(state.streaming, C.text); state.streaming = ""; } }
   function askPermission(name, args) { if (agent.autoApprove) { pushLine("  [auto] " + name + " " + summarize(args), C.warn); return Promise.resolve({ allowed: true }); } state.permissionPreview = formatPermission(name, args); return new Promise(resolve => { state.permission = { name, args, resolve, reasonMode: false }; state.status = "Waiting: " + name; render(); }); }
   function askQuestion(text) { if (state.question) return Promise.resolve("(already waiting)"); pushLabel("\u276f Question", ansi.bold + C.tool); for (const line of text.split("\n")) pushLine("  " + line, C.text); return new Promise(resolve => { state.question = { text, options: [], resolve }; state.status = "Waiting..."; render(); }); }
