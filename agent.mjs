@@ -262,6 +262,18 @@ function loadSystemPrompt() {
 
 export const DEFAULT_SYSTEM_PROMPT = loadSystemPrompt();
 
+// ─── Goal Mode ─────────────────────────────────────────────────────────────────
+
+export const GOAL_MODE_PREAMBLE =
+  '[Goal mode — you are working on an autonomous goal]\n' +
+  '\n' +
+  'Goal mode differs from normal collaborative mode. In goal mode, you pursue the objective autonomously:\n' +
+  '\n' +
+  '- Stay relentlessly focused on the goal. Don\'t get sidetracked or lost in the middle, even across many turns.\n' +
+  '- Drive forward without frequent back-and-forth. Make decisions yourself — don\'t wait for confirmation on every step.\n' +
+  '- If you hit the same blocker 3 genuine attempts in a row, call goal(action=\'blocked\') with the reason. Don\'t loop indefinitely.\n' +
+  '- Completion is defined by the goal\'s criteria. Do not declare victory unless the criteria are actually met. When they are, call goal(action=\'complete\') and summarize the evidence.';
+
 // ─── Default Callbacks ────────────────────────────────────────────────────────
 
 function defaultCallbacks(overrides = {}) {
@@ -390,6 +402,20 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
 
   // Push AUTO_REMINDER
   agent.history.push({ role: 'user', content: AUTO_REMINDER, transient: true });
+
+  // Goal mode: inject preamble + goal context so the LLM knows it's working on a goal from turn 1
+  if (agent.goal?.status === 'active') {
+    const budget = agent.config.agent?.goalTurns || DEFAULT_GOAL_TURNS;
+    agent.history.push({
+      role: 'user',
+      content:
+        GOAL_MODE_PREAMBLE + '\n\n' +
+        `Objective: "${agent.goal.objective}"\n` +
+        `Criteria: ${agent.goal.criteria || '(none)'}\n` +
+        `Turn budget: ${budget}`,
+      transient: true,
+    });
+  }
 
   // Push the actual user input
   agent.history.push({ role: 'user', content: input });
