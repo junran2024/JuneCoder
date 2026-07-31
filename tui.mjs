@@ -169,10 +169,13 @@ export async function startTUI(agent, opts = {}) {
     const W = Math.max(20, cols - 1);
 
     const layout = layoutInput(state.input, state.cursor, W - 6);
-    const MAX_INPUT_LINES = 5;
+    const MAX_INPUT_LINES = 10;
     let inputOffset = 0;
     if (layout.lines.length > MAX_INPUT_LINES) inputOffset = Math.min(layout.cursorLine, layout.lines.length - MAX_INPUT_LINES);
     const inputLines = layout.lines.slice(inputOffset, inputOffset + MAX_INPUT_LINES);
+    if (layout.lines.length > MAX_INPUT_LINES) {
+      inputLines.push(`(${layout.lines.length} lines total)`);
+    }
 
     let boxLines = inputLines;
     if (state.question) {
