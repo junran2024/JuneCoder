@@ -6,7 +6,6 @@
  *   1. compressIfNeeded — LLM-based summarization
  *   2. compressFallback — deterministic truncation when LLM summarization fails
  */
-import { AUTO_REMINDER } from './agent.mjs';
 
 /** How many consecutive compression failures before triggering fallback. */
 export const COMPRESS_FAILURE_LIMIT = 3;
@@ -119,9 +118,6 @@ export async function compressIfNeeded(agent, threshold, cb) {
       ...toKeep,
     ];
 
-    agent._pendingReminders = agent._pendingReminders || [];
-    agent._pendingReminders.push(AUTO_REMINDER);
-
     if (cb && cb.onCompress) cb.onCompress('llm');
     return true;
   } catch {
@@ -183,10 +179,6 @@ export function compressFallback(agent, keepRecent = 10) {
     { role: 'user', content: summaryLine, _transient: true },
     ...kept,
   ];
-
-  // Log a reminder about the compression
-  agent._pendingReminders = agent._pendingReminders || [];
-  agent._pendingReminders.push(AUTO_REMINDER);
 
   // Reset failure counter
   agent._compressFailures = 0;

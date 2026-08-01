@@ -85,7 +85,6 @@ describe('compressFallback', () => {
         { role: 'assistant', content: 'reply7' },
       ],
       _compressFailures: 5,
-      _pendingReminders: [],
     };
 
     compressFallback(agent, 4);
@@ -143,7 +142,6 @@ describe('compressFallback', () => {
         { role: 'tool', tool_call_id: 'c1', name: 'read', content: 'r4' },
       ],
       _compressFailures: 3,
-      _pendingReminders: [],
     };
 
     compressFallback(agent, 4); // cut lands inside the tool batch
@@ -151,24 +149,6 @@ describe('compressFallback', () => {
     // Leading orphan tool messages must be dropped, not kept
     assert.strictEqual(agent.history.filter((m) => m.role === 'tool').length, 0);
     assert.strictEqual(agent.history[0].role, 'system');
-  });
-
-  it('adds AUTO_REMINDER to _pendingReminders', () => {
-    const agent = {
-      history: [
-        { role: 'user', content: '1' },
-        { role: 'assistant', content: '2' },
-        { role: 'user', content: '3' },
-        { role: 'assistant', content: '4' },
-        { role: 'user', content: '5' },
-        { role: 'assistant', content: '6' },
-      ],
-      _compressFailures: 3,
-      _pendingReminders: [],
-    };
-
-    compressFallback(agent, 2);
-    assert.ok(agent._pendingReminders.length > 0);
   });
 });
 
@@ -185,7 +165,6 @@ describe('checkAndCompress', () => {
     const agent = {
       history: [{ role: 'user', content: 'x'.repeat(5000) }],
       _compressFailures: 0,
-      _pendingReminders: [],
     };
     // Above threshold (10 tokens), but compressIfNeeded returns false (stub)
     const result = await checkAndCompress(agent, 10);
@@ -197,7 +176,6 @@ describe('checkAndCompress', () => {
     const agent = {
       history: [{ role: 'user', content: 'short message' }],
       _compressFailures: 0,
-      _pendingReminders: [],
     };
     // Way under threshold: no counting, no fallback, history untouched
     for (let i = 0; i < COMPRESS_FAILURE_LIMIT + 2; i++) {
@@ -219,7 +197,6 @@ describe('checkAndCompress', () => {
         { role: 'assistant', content: '6' },
       ],
       _compressFailures: COMPRESS_FAILURE_LIMIT - 1,
-      _pendingReminders: [],
     };
     // Next failure should trigger fallback
     const result = await checkAndCompress(agent, 1);

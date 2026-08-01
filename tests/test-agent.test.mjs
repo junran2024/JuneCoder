@@ -2,7 +2,6 @@ import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { execSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 
 import {
@@ -13,13 +12,10 @@ import {
   REPORT_CONTINUATION,
   TOOL_RESULT_OFFLOAD_LIMIT,
   TOOL_RESULT_PREVIEW,
-  AUTO_REMINDER,
   MAX_INSTRUCTION_CHARS,
   escapeXml,
   tryCanonicalize,
   repairHistory,
-  listWorkDir,
-  collectGitContext,
   loadProjectInstructions,
   createAgent,
   runAgent,
@@ -52,9 +48,6 @@ describe('constants', () => {
   });
   it('REPORT_CONTINUATION is non-empty string', () => {
     assert.ok(typeof REPORT_CONTINUATION === 'string' && REPORT_CONTINUATION.length > 0);
-  });
-  it('AUTO_REMINDER is non-empty string', () => {
-    assert.ok(typeof AUTO_REMINDER === 'string' && AUTO_REMINDER.length > 0);
   });
 });
 
@@ -212,113 +205,6 @@ describe('repairHistory', () => {
     const copy = JSON.parse(JSON.stringify(input));
     repairHistory(input);
     assert.deepStrictEqual(input, copy);
-  });
-});
-
-// ─── listWorkDir ───────────────────────────────────────────────────────────────
-
-describe('listWorkDir', () => {
-  let tmpDir;
-
-  before(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'junecoder-test-'));
-    // Create some files and dirs
-    writeFileSync(join(tmpDir, 'file1.txt'), 'hello');
-    writeFileSync(join(tmpDir, 'file2.mjs'), 'export const x = 1;');
-    const subDir = join(tmpDir, 'subdir');
-    mkdirSync(subDir);
-    writeFileSync(join(subDir, 'nested.txt'), 'world');
-  });
-
-  after(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  it('returns string with working directory header', () => {
-    const out = listWorkDir(tmpDir);
-    assert.ok(out.startsWith('Working directory:'));
-    assert.ok(out.includes(tmpDir));
-  });
-
-  it('lists files', () => {
-    const out = listWorkDir(tmpDir, { maxDepth: 1 });
-    assert.ok(out.includes('file1.txt'));
-    assert.ok(out.includes('file2.mjs'));
-  });
-
-  it('lists directories with trailing slash', () => {
-    const out = listWorkDir(tmpDir, { maxDepth: 1 });
-    assert.ok(out.includes('subdir/'));
-  });
-
-  it('nested content shown with depth >= 2', () => {
-    const out = listWorkDir(tmpDir, { maxDepth: 2 });
-    assert.ok(out.includes('nested.txt'));
-  });
-
-  it('nested content hidden with depth = 1', () => {
-    const out = listWorkDir(tmpDir, { maxDepth: 1 });
-    assert.ok(!out.includes('nested.txt'));
-  });
-
-  it('respects maxEntries', () => {
-    // Create many files
-    for (let i = 0; i < 20; i++) {
-      writeFileSync(join(tmpDir, `many-${i}.txt`), 'x');
-    }
-    const out = listWorkDir(tmpDir, { maxDepth: 1, maxEntries: 5 });
-    assert.ok(out.includes('max entries reached'));
-  });
-
-  it('handles non-existent directory gracefully', () => {
-    const out = listWorkDir('/no/such/path/12345');
-    assert.ok(out.includes('(empty or inaccessible)'));
-  });
-});
-
-// ─── collectGitContext ─────────────────────────────────────────────────────────
-
-describe('collectGitContext', () => {
-  let gitDir;
-
-  before(() => {
-    gitDir = mkdtempSync(join(tmpdir(), 'junecoder-git-'));
-    execSync('git init', { cwd: gitDir, stdio: 'ignore' });
-    execSync('git config user.email "test@test.com"', { cwd: gitDir, stdio: 'ignore' });
-    execSync('git config user.name "Test"', { cwd: gitDir, stdio: 'ignore' });
-    writeFileSync(join(gitDir, 'README.md'), '# Test');
-    execSync('git add -A', { cwd: gitDir, stdio: 'ignore' });
-    execSync('git commit -m "initial"', { cwd: gitDir, stdio: 'ignore' });
-  });
-
-  after(() => {
-    rmSync(gitDir, { recursive: true, force: true });
-  });
-
-  it('returns branch info', () => {
-    const out = collectGitContext(gitDir);
-    assert.ok(out.includes('Branch:'));
-  });
-
-  it('returns commit log', () => {
-    const out = collectGitContext(gitDir);
-    assert.ok(out.includes('Recent commits:'));
-    assert.ok(out.includes('initial'));
-  });
-
-  it('reports clean status after commit', () => {
-    const out = collectGitContext(gitDir);
-    assert.ok(out.includes('Status: clean'));
-  });
-
-  it('handles non-git directory gracefully', () => {
-    const tmp = mkdtempSync(join(tmpdir(), 'junecoder-nogit-'));
-    try {
-      const out = collectGitContext(tmp);
-      assert.ok(out.includes('not a git repository'));
-    } finally {
-      rmSync(tmp, { recursive: true, force: true });
-    }
   });
 });
 

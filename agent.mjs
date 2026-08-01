@@ -1,6 +1,5 @@
-import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
-import { join, relative, basename } from 'node:path';
-import { execSync } from 'node:child_process';
+import { readFileSync, existsSync } from 'node:fs';
+import { join, basename } from 'node:path';
 import { homedir } from 'node:os';
 import { loadSkills, formatSkillListing } from './skills.mjs';
 import { loadMcpProjects, formatMcpListing } from './mcp.mjs';
@@ -14,8 +13,6 @@ export const MIN_REPORT_CHARS = 50;
 export const REPORT_CONTINUATION = '... [content truncated]';
 export const TOOL_RESULT_OFFLOAD_LIMIT = 8000;
 export const TOOL_RESULT_PREVIEW = 500;
-export const AUTO_REMINDER =
-  '[System reminder: working directory snapshot is provided at session start and after tool executions that may change it.]';
 export const MAX_INSTRUCTION_CHARS = 32_000;
 
 export const VERIFY_CHECKLIST =
@@ -103,106 +100,6 @@ export function repairHistory(history) {
   }
 
   return repaired;
-}
-
-// ─── File System Helpers ─────────────────────────────────────────────────────
-
-/**
- * Generate a tree-style listing of a working directory.
- * @param {string} cwd - directory to list
- * @param {{ maxDepth?: number, maxEntries?: number }} [opts]
- * @returns {string} tree text
- */
-export function listWorkDir(cwd, opts = {}) {
-  const { maxDepth = 3, maxEntries = 200 } = opts;
-  let count = 0;
-
-  function walk(dir, prefix, depth) {
-    if (depth > maxDepth || count >= maxEntries) return '';
-
-    let result = '';
-    let entries;
-    try {
-      entries = readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return '';
-    }
-
-    // Sort: directories first, then files, alphabetically
-    entries.sort((a, b) => {
-      if (a.isDirectory() && !b.isDirectory()) return -1;
-      if (!a.isDirectory() && b.isDirectory()) return 1;
-      return a.name.localeCompare(b.name);
-    });
-
-    for (let i = 0; i < entries.length; i++) {
-      if (count >= maxEntries) {
-        result += `${prefix}... (max entries reached)\n`;
-        break;
-      }
-      const entry = entries[i];
-      // Skip hidden and node_modules
-      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
-
-      const isLast = i === entries.length - 1;
-      const connector = isLast ? '└── ' : '├── ';
-      const relPath = relative(cwd, join(dir, entry.name));
-
-      count++;
-      if (entry.isDirectory()) {
-        result += `${prefix}${connector}${entry.name}/\n`;
-        result += walk(
-          join(dir, entry.name),
-          prefix + (isLast ? '    ' : '│   '),
-          depth + 1,
-        );
-      } else {
-        try {
-          const st = statSync(join(dir, entry.name));
-          result += `${prefix}${connector}${entry.name} (${st.size} bytes)\n`;
-        } catch {
-          result += `${prefix}${connector}${entry.name}\n`;
-        }
-      }
-    }
-    return result;
-  }
-
-  const header = `Working directory: ${cwd}\n`;
-  const tree = walk(cwd, '', 1);
-  return header + (tree || '(empty or inaccessible)\n');
-}
-
-/**
- * Collect git context from a working directory.
- * @param {string} cwd
- * @returns {string} git status, branch, and recent log
- */
-export function collectGitContext(cwd) {
-  const parts = [];
-  const run = (cmd) => {
-    try {
-      return execSync(cmd, { cwd, encoding: 'utf-8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-    } catch {
-      return null;
-    }
-  };
-
-  const branch = run('git rev-parse --abbrev-ref HEAD');
-  if (branch) parts.push(`Branch: ${branch}`);
-
-  const status = run('git status --short');
-  if (status !== null) {
-    parts.push(status ? `Status:\n${status}` : 'Status: clean');
-  }
-
-  const log = run('git --no-pager log --oneline -5');
-  if (log) parts.push(`Recent commits:\n${log}`);
-
-  const diff = run('git diff --stat');
-  if (diff) parts.push(`Unstaged changes:\n${diff}`);
-
-  return parts.length > 0 ? parts.join('\n\n') : '(not a git repository or git unavailable)';
 }
 
 // ─── Project Instructions ─────────────────────────────────────────────────────
@@ -325,7 +222,6 @@ export function createAgent(opts) {
     _turnsInPlanMode: 0,
     _mutatedThisRun: false,
     _verifiedThisRun: false,
-    _pendingReminders: [],
     _recentCallSigs: [],
     _mcpProcesses: [],
     _mcpProjectNames: [],
@@ -381,30 +277,6 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
     agent.history.push({ role: 'system', content: sysPrompt });
   }
 
-  // Inject environment snapshot + memories + user input
-  const envSnapshot = [
-    listWorkDir(agent.cwd),
-    collectGitContext(agent.cwd),
-  ].filter(Boolean).join('\n\n');
-
-  const projInstr = loadProjectInstructions(agent.cwd);
-
-  const transientBlocks = [];
-  transientBlocks.push(`${envSnapshot}`);
-  if (projInstr) transientBlocks.push(`Project instructions:\n${projInstr}`);
-
-  // Inject all transient context as user messages
-  if (transientBlocks.length > 0) {
-    agent.history.push({
-      role: 'user',
-      content: `[System context]\n\n${transientBlocks.join('\n\n')}`,
-      transient: true,
-    });
-  }
-
-  // Push AUTO_REMINDER
-  agent.history.push({ role: 'user', content: AUTO_REMINDER, transient: true });
-
   // Goal mode: inject preamble + goal context so the LLM knows it's working on a goal from turn 1
   if (agent.goal?.status === 'active') {
     const budget = agent.config.agent?.goalTurns || DEFAULT_GOAL_TURNS;
@@ -452,11 +324,7 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
     // Step 2: Compress check
     try {
       const { checkAndCompress } = await import('./context.mjs');
-      const didCompress = await checkAndCompress(agent, compactThreshold, cb);
-      if (didCompress) {
-        // Re-inject AUTO_REMINDER after compression
-        agent.history.push({ role: 'user', content: AUTO_REMINDER, transient: true });
-      }
+      await checkAndCompress(agent, compactThreshold, cb);
     } catch { /* compression is non-fatal */ }
 
     // Step 3: Build messages (clean transient for LLM)
@@ -568,15 +436,7 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
       }
     }
 
-    // Step 8: Inject pending reminders
-    if (agent._pendingReminders.length > 0) {
-      for (const reminder of agent._pendingReminders) {
-        agent.history.push({ role: 'user', content: reminder, transient: true });
-      }
-      agent._pendingReminders = [];
-    }
-
-    // Step 9: Stagnation detection
+    // Step 8: Stagnation detection
     if (results.length > 0) {
       const sigs = [];
       for (let i = 0; i < results.length; i++) {
@@ -607,7 +467,7 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
       }
     }
 
-    // Step 10: Goal progress tracking (every turn when goal active)
+    // Step 9: Goal progress tracking (every turn when goal active)
     if (agent.goal?.status === 'active') {
       agent.goal.turnsUsed = (agent.goal.turnsUsed || 0) + 1;
       const budget = agent.config.agent?.goalTurns || DEFAULT_GOAL_TURNS;
@@ -624,7 +484,7 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
       });
     }
 
-    // Step 11: Task list reminder (every 10 turns, top-level only)
+    // Step 10: Task list reminder (every 10 turns, top-level only)
     if (depth === 0 && agent._turnsSinceTaskUpdate >= 10 && agent.tasks.length > 0) {
       const incomplete = agent.tasks.filter((t) => t.status !== 'done').length;
       if (incomplete > 0) {
@@ -636,7 +496,7 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
       }
     }
 
-    // Step 12: Plan mode guidance (every 8 turns)
+    // Step 11: Plan mode guidance (every 8 turns)
     if (agent.planMode && agent._turnsInPlanMode >= 8) {
       try { cb.onSystem('plan', `${agent._turnsInPlanMode} turns in plan mode, consider exiting`); } catch { /* ignore */ }
       agent.history.push({
@@ -646,7 +506,7 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
       });
     }
 
-    // Step 13: Turn end callback
+    // Step 12: Turn end callback
     try { cb.onTurnEnd(turn, maxTurns); } catch { /* ignore */ }
   }
 
