@@ -402,8 +402,9 @@ export const mcpConnectTool = {
             agent._mcpProcesses.push(mcpTools._mcpProc);
           }
 
-          // Register actual tool objects
-          const cleanTools = mcpTools.filter(t => typeof t.execute === 'function');
+          // Register actual tool objects (skip duplicates)
+          const existing = new Set(agent.tools.map(t => t.name));
+          const cleanTools = mcpTools.filter(t => typeof t.execute === 'function' && !existing.has(t.name));
           agent.tools.push(...cleanTools);
 
           const names = mcpTools.filter(t => t.name).map(t => t.name);
@@ -446,10 +447,12 @@ export const mcpConnectTool = {
       if (mcpTools._mcpProc) {
         mcpTools._mcpProc._mcpName = srv.name;
         agent._mcpProcesses.push(mcpTools._mcpProc);
-
-        const cleanTools = mcpTools.filter(t => typeof t.execute === 'function');
-        agent.tools.push(...cleanTools);
       }
+
+      // Register actual tool objects (skip duplicates)
+      const existing = new Set(agent.tools.map(t => t.name));
+      const cleanTools = mcpTools.filter(t => typeof t.execute === 'function' && !existing.has(t.name));
+      agent.tools.push(...cleanTools);
 
       const toolNames = mcpTools
         .filter(t => t.name)

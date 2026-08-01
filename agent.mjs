@@ -441,8 +441,8 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
       toolByName.set(t.name, t);
     }
 
-    // Build OpenAI-format tool schemas for the provider
-    const toolSchemas = allTools.map((t) => toolsModule.toOpenAISchema(t));
+    // Build OpenAI-format tool schemas for the provider (deduped by name)
+    const toolSchemas = [...toolByName.values()].map((t) => toolsModule.toOpenAISchema(t));
     // Step 1: Increment counters
     agent._turnsSinceTaskUpdate++;
     if (agent.planMode) {
