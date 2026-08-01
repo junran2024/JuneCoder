@@ -170,9 +170,15 @@ async function runOne(agent, item, callbacks, signal) {
     const raw = await tool.execute(args, agent, { signal });
     output = typeof raw === 'string' ? raw : JSON.stringify(raw);
 
-    // Offload long results
+    // Offload long results — except read, whose content is already on disk.
+    // Offloading read creates a daisy chain of offloaded files the LLM can never reach.
     if (output.length > TOOL_RESULT_OFFLOAD_LIMIT) {
-      output = offloadToolResult(name, output);
+      if (name === 'read') {
+        const preview = output.slice(0, TOOL_RESULT_PREVIEW);
+        output = `${preview}\n\n[Read output truncated: ${output.length} chars. Use offset/limit to read the file in smaller chunks.]`;
+      } else {
+        output = offloadToolResult(name, output);
+      }
     }
   } catch (err) {
     error = err.message || String(err);
