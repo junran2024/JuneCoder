@@ -3,6 +3,7 @@ import { join, relative, basename } from 'node:path';
 import { execSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { loadSkills, formatSkillListing } from './skills.mjs';
+import { loadMcpProjects, formatMcpListing } from './mcp.mjs';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -327,6 +328,7 @@ export function createAgent(opts) {
     _pendingReminders: [],
     _recentCallSigs: [],
     _mcpProcesses: [],
+    _mcpProjectNames: [],
     _compressFailures: 0,
     _depth: opts.depth || 0,
   };
@@ -687,6 +689,15 @@ function buildSystemPrompt(agent, depth) {
       prompt += `\n\n--- Available Skills ---\n${listing}`;
     }
   } catch { /* skills module may not be available */ }
+
+  // Append MCP project listing (name + one-line description, no auth)
+  try {
+    const projects = loadMcpProjects(agent.cwd);
+    if (projects.length > 0) {
+      const listing = formatMcpListing(projects);
+      prompt += `\n\n--- Available MCP Projects ---\n${listing}`;
+    }
+  } catch { /* mcp module may not be available */ }
 
   return prompt;
 }

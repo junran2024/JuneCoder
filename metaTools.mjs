@@ -352,22 +352,88 @@ export const memoryPutTool = {
 export const mcpConnectTool = {
   name: 'mcp_connect',
   description:
-    'Connect to an MCP server. Returns its tools, registered with an mcp_<name>_ prefix. ' +
-    'Tools become available immediately in subsequent turns.',
+    'Connect to an MCP server or project. Use "project" to load a pre-configured ' +
+    'project from ~/.junecoder/mcp/<name>.json, or "command" for direct stdio spawn. ' +
+    'Tools are registered with an mcp_<name>_ prefix and available immediately.',
   parameters: {
     type: 'object',
     properties: {
-      command: { type: 'string', description: 'Executable command to spawn the server' },
+      project: { type: 'string', description: 'Project name (loads from ~/.junecoder/mcp/<name>.json)' },
+      command: { type: 'string', description: 'Executable command to spawn the server (direct stdio)' },
       args: { type: 'string', description: 'Command arguments (space-separated)' },
       name: { type: 'string', description: 'Server name for disambiguation' },
     },
-    required: ['command'],
   },
   readonly: false,
   parallel: false,
 
   async execute(args, agent) {
-    const { connectMcpServer } = await import('./mcp.mjs');
+    const { connectMcpServer, readMcpProject } = await import('./mcp.mjs');
+
+    // ── Project mode: load from ~/.junecoder/mcp/<project>.json ──
+    if (args.project) {
+      const projectName = args.project;
+      const cfg = readMcpProject(projectName, agent.cwd);
+      if (!cfg || !cfg.mcpServers) {
+        return `MCP project "${projectName}" not found or has no servers. Check ~/.junecoder/mcp/ or <cwd>/.junecoder/mcp/.`;
+      }
+
+      const serverEntries = Object.entries(cfg.mcpServers);
+      if (serverEntries.length === 0) {
+        return `MCP project "${projectName}" has no servers configured.`;
+      }
+
+      const allToolNames = [];
+      const errors = [];
+
+      for (const [serverKey, serverCfg] of serverEntries) {
+        const srv = {
+          ...serverCfg,
+          name: `${projectName}_${serverKey}`,
+        };
+
+        try {
+          const mcpTools = await connectMcpServer(srv);
+
+          // Track processes (stdio) or mark as HTTP
+          if (!agent._mcpProcesses) agent._mcpProcesses = [];
+          if (mcpTools._mcpProc) {
+            mcpTools._mcpProc._mcpName = srv.name;
+            agent._mcpProcesses.push(mcpTools._mcpProc);
+          }
+
+          // Register actual tool objects
+          const cleanTools = mcpTools.filter(t => typeof t.execute === 'function');
+          agent.tools.push(...cleanTools);
+
+          const names = mcpTools.filter(t => t.name).map(t => t.name);
+          allToolNames.push(...names);
+        } catch (err) {
+          errors.push(`  ${serverKey}: ${err.message}`);
+        }
+      }
+
+      // Track project name for listing
+      if (!agent._mcpProjectNames) agent._mcpProjectNames = [];
+      if (!agent._mcpProjectNames.includes(projectName)) {
+        agent._mcpProjectNames.push(projectName);
+      }
+
+      let result = `Connected to MCP project "${projectName}" (${serverEntries.length} server${serverEntries.length !== 1 ? 's' : ''}).`;
+      if (allToolNames.length > 0) {
+        result += `\nTools available:\n  ${allToolNames.join('\n  ')}`;
+      }
+      if (errors.length > 0) {
+        result += `\nWarnings:\n${errors.join('\n')}`;
+      }
+      return result;
+    }
+
+    // ── Direct mode: spawn by command (original behavior) ──
+    if (!args.command) {
+      return 'Either "project" or "command" is required. Use "project" to load a pre-configured MCP project, or "command" to spawn a server directly.';
+    }
+
     const srv = {
       name: args.name || 'mcp',
       command: args.command,
@@ -376,13 +442,11 @@ export const mcpConnectTool = {
     try {
       const mcpTools = await connectMcpServer(srv);
 
-      // Track the child process
       if (!agent._mcpProcesses) agent._mcpProcesses = [];
       if (mcpTools._mcpProc) {
         mcpTools._mcpProc._mcpName = srv.name;
         agent._mcpProcesses.push(mcpTools._mcpProc);
 
-        // Register only the actual tool objects (strip meta properties)
         const cleanTools = mcpTools.filter(t => typeof t.execute === 'function');
         agent.tools.push(...cleanTools);
       }
@@ -429,7 +493,7 @@ export const mcpDisconnectTool = {
 
 export const mcpListTool = {
   name: 'mcp_list',
-  description: 'List currently connected MCP servers.',
+  description: 'List currently connected MCP servers and projects.',
   parameters: {
     type: 'object',
     properties: {},
@@ -439,13 +503,33 @@ export const mcpListTool = {
   parallel: true,
 
   async execute(args, agent) {
-    if (!agent._mcpProcesses || agent._mcpProcesses.length === 0) {
-      return 'No MCP servers connected.';
+    const lines = [];
+
+    if (agent._mcpProjectNames && agent._mcpProjectNames.length > 0) {
+      lines.push('Connected MCP projects:');
+      for (const name of agent._mcpProjectNames) {
+        lines.push(`  - ${name} (project)`);
+      }
     }
-    const names = agent._mcpProcesses
-      .map(p => `- ${p._mcpName || '(unnamed)'}`)
-      .join('\n');
-    return `Connected MCP servers:\n${names}`;
+
+    if (agent._mcpProcesses && agent._mcpProcesses.length > 0) {
+      // Only show processes NOT already covered by a project
+      const projectPrefixes = (agent._mcpProjectNames || []).map(n => n + '_');
+      const standalone = agent._mcpProcesses.filter(p => {
+        const pname = p._mcpName || '';
+        return !projectPrefixes.some(pref => pname.startsWith(pref));
+      });
+      if (standalone.length > 0) {
+        if (lines.length > 0) lines.push('');
+        lines.push('Standalone MCP servers:');
+        for (const p of standalone) {
+          lines.push(`  - ${p._mcpName || '(unnamed)'} (stdio)`);
+        }
+      }
+    }
+
+    if (lines.length === 0) return 'No MCP servers connected.';
+    return lines.join('\n');
   },
 };
 
