@@ -368,7 +368,7 @@ export const mcpConnectTool = {
   parallel: false,
 
   async execute(args, agent) {
-    const { connectMcpServer, readMcpProject } = await import('./mcp.mjs');
+    const { connectMcpServer, readMcpProject, removeMcpTools } = await import('./mcp.mjs');
 
     // ── Project mode: load from ~/.junecoder/mcp/<project>.json ──
     if (args.project) {
@@ -392,6 +392,9 @@ export const mcpConnectTool = {
           name: `${projectName}_${serverKey}`,
         };
 
+        // Make reconnection idempotent: remove old tools before re-adding
+        removeMcpTools(agent, srv.name);
+
         try {
           const mcpTools = await connectMcpServer(srv);
 
@@ -402,9 +405,8 @@ export const mcpConnectTool = {
             agent._mcpProcesses.push(mcpTools._mcpProc);
           }
 
-          // Register actual tool objects (skip duplicates)
-          const existing = new Set(agent.tools.map(t => t.name));
-          const cleanTools = mcpTools.filter(t => typeof t.execute === 'function' && !existing.has(t.name));
+          // Register tool objects
+          const cleanTools = mcpTools.filter(t => typeof t.execute === 'function');
           agent.tools.push(...cleanTools);
 
           const names = mcpTools.filter(t => t.name).map(t => t.name);
@@ -440,6 +442,10 @@ export const mcpConnectTool = {
       command: args.command,
       args: args.args ? args.args.split(/\s+/) : [],
     };
+
+    // Make reconnection idempotent
+    removeMcpTools(agent, srv.name);
+
     try {
       const mcpTools = await connectMcpServer(srv);
 
@@ -449,9 +455,8 @@ export const mcpConnectTool = {
         agent._mcpProcesses.push(mcpTools._mcpProc);
       }
 
-      // Register actual tool objects (skip duplicates)
-      const existing = new Set(agent.tools.map(t => t.name));
-      const cleanTools = mcpTools.filter(t => typeof t.execute === 'function' && !existing.has(t.name));
+      // Register tool objects
+      const cleanTools = mcpTools.filter(t => typeof t.execute === 'function');
       agent.tools.push(...cleanTools);
 
       const toolNames = mcpTools
