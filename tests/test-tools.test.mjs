@@ -15,7 +15,7 @@ import { lsTool } from '../tools/ls.mjs';
 import { deleteTool } from '../tools/delete.mjs';
 import { fetchTool } from '../tools/fetch.mjs';
 import { websearchTool } from '../tools/websearch.mjs';
-import { toOpenAISchema, baseTools } from '../tools/index.mjs';
+import { toOpenAISchema, baseTools } from '../tools.mjs';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -32,7 +32,7 @@ function tmpdirCtx() {
 
 // ─── toOpenAISchema / baseTools ──────────────────────────────────────────────
 
-describe('tools/index', () => {
+describe('tools', () => {
   it('baseTools has 10 tools', () => {
     assert.strictEqual(baseTools.length, 10);
   });

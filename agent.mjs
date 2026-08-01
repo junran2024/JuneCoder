@@ -1,6 +1,5 @@
 import { join } from 'node:path';
 import { DEFAULT_SYSTEM_PROMPT, GOAL_MODE_PREAMBLE, buildSystemPrompt, loadProjectInstructions } from './prompt.mjs';
-export { DEFAULT_SYSTEM_PROMPT, GOAL_MODE_PREAMBLE, buildSystemPrompt, loadProjectInstructions };
 import {
   DEFAULT_MAX_TURNS,
   DEFAULT_SUBAGENT_TURNS,
@@ -104,6 +103,13 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
   const toolsModule = await import('./tools.mjs');
   const { metaTools } = await import('./metaTools.mjs');
 
+  // Preload modules used inside the loop (Node caches them, but pulling
+  // the import() out of the hot path makes the intent clearer).
+  const { checkAndCompress } = await import('./context.mjs');
+  const { chat } = await import('./provider.mjs');
+  const { executeToolCalls } = await import('./executor.mjs');
+  const { reindexFile } = await import('./memory.mjs');
+
   // ── Main Loop ───────────────────────────────────────────────────────────
 
   for (let turn = 0; turn < maxTurns; turn++) {
@@ -130,7 +136,6 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
 
     // Step 2: Compress check
     try {
-      const { checkAndCompress } = await import('./context.mjs');
       await checkAndCompress(agent, compactThreshold, cb);
     } catch { /* compression is non-fatal */ }
 
@@ -138,7 +143,6 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
     const messages = repairHistory(agent.history);
 
     // Call LLM
-    const { chat } = await import('./provider.mjs');
     const provider = agent.provider;
 
     const response = await chat(provider, {
@@ -187,7 +191,6 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
     agent.history.push(assistantMsg);
 
     // Step 6: Execute tool calls
-    const { executeToolCalls } = await import('./executor.mjs');
     const results = await executeToolCalls(agent, toolByName, response.toolCalls, cb, depth, signal);
 
     // Step 7: Process results
@@ -219,7 +222,6 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
                 const absPath = args.path.startsWith('/')
                   ? args.path
                   : join(agent.cwd, args.path);
-                const { reindexFile } = await import('./memory.mjs');
                 await reindexFile(agent.memory, agent.cwd, absPath);
               }
             } catch { /* non-fatal */ }

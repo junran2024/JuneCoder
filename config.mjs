@@ -1,36 +1,9 @@
 /**
- * Configuration module — constants, configDir path, default config factory,
- * and .env file loading. No config.json support — API keys go in .env files only.
+ * Configuration module — constants, configDir path, and default config factory.
+ * No config.json support — API keys go in .env files (loaded by env.mjs).
  */
 import { join } from 'node:path';
 import { homedir } from 'node:os';
-import { existsSync, readFileSync } from 'node:fs';
-
-// Load ~/.junecoder/.env before any code reads process.env.
-// This is the single .env file — managed by /key command in TUI.
-// Must happen here (not cli.mjs) because ESM static imports are hoisted —
-// this module's body runs before cli.mjs's body.
-{
-  const envPath = join(homedir(), '.junecoder', '.env');
-  try {
-    if (existsSync(envPath)) {
-      const content = readFileSync(envPath, 'utf-8');
-      for (const line of content.split('\n')) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith('#')) continue;
-        const eq = trimmed.indexOf('=');
-        if (eq === -1) continue;
-        const key = trimmed.slice(0, eq).trim();
-        let val = trimmed.slice(eq + 1).trim();
-        if ((val.startsWith('"') && val.endsWith('"')) ||
-            (val.startsWith("'") && val.endsWith("'"))) {
-          val = val.slice(1, -1);
-        }
-        if (!process.env[key]) process.env[key] = val;
-      }
-    }
-  } catch { /* ignore missing/unreadable .env */ }
-}
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 

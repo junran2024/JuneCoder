@@ -16,6 +16,7 @@
 import { existsSync, statSync, readFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { homedir } from 'node:os';
+import './env.mjs';
 import { createAgent } from './agent.mjs';
 import { startTUI } from './tui.mjs';
 import { defaultConfig } from './config.mjs';

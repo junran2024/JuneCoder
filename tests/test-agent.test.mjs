@@ -18,11 +18,11 @@ import {
   escapeXml,
   tryCanonicalize,
   repairHistory,
-  loadProjectInstructions,
   createAgent,
   runAgent,
   ContinueError,
 } from '../agent.mjs';
+import { loadProjectInstructions } from '../prompt.mjs';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
