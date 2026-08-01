@@ -175,7 +175,7 @@ async function runOne(agent, item, callbacks, signal) {
     if (output.length > TOOL_RESULT_OFFLOAD_LIMIT) {
       if (name === 'read') {
         const preview = output.slice(0, TOOL_RESULT_PREVIEW);
-        output = `${preview}\n\n[Read output truncated: ${output.length} chars. Use offset/limit to read the file in smaller chunks.]`;
+        output = `${preview}\n\n[Read output truncated: ${output.length} chars. Use offset/limit for line paging, or chars for character-based slicing.]`;
       } else {
         output = offloadToolResult(name, output);
       }
