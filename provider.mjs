@@ -56,7 +56,7 @@ export async function chat(provider, { messages, tools, onToken, onReasoning, si
   if (!response.ok) {
     const errText = await response.text().catch(() => '');
     if (response.status === 401 || response.status === 403) {
-      throw new Error(`Use /key to setup API key. DeepSeek request failed (${response.status}): ${errText}`);
+      throw new Error(`DeepSeek request failed (${response.status}): ${errText}`);
     }
     throw new Error(`DeepSeek request failed (${response.status}): ${errText}`);
   }

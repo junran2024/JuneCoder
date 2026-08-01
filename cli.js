@@ -11,7 +11,8 @@
  * API keys can be provided via:
  *   1. Interactive setup on first run (TUI)
  *   2. ~/.junecoder/config.json (managed by /key command)
- *   3. DEEPSEEK_API_KEY environment variable
+ *   3. ~/.junecoder/.env (auto-migrated to config.json on first load)
+ *   4. DEEPSEEK_API_KEY environment variable
  */
 import { existsSync, statSync, readFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
@@ -164,6 +165,14 @@ if (!isTui) {
   // Single-shot mode
   if (!promptInput) {
     console.error('Error: No prompt provided for single-shot execution.');
+    process.exit(1);
+  }
+
+  if (!provider.apiKey) {
+    console.error('Error: No API key configured.');
+    console.error(`Add your key to ${join(homedir(), '.junecoder', 'config.json')}:`);
+    console.error('  { "providers": [{ "name": "deepseek", "apiKey": "sk-..." }] }');
+    console.error('Or run `junecoder` interactively to set one up.');
     process.exit(1);
   }
 
