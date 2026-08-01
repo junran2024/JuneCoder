@@ -10,7 +10,7 @@ import { homedir } from 'node:os';
 import {
   TOOL_RESULT_OFFLOAD_LIMIT,
   TOOL_RESULT_PREVIEW,
-} from './agent.mjs';
+} from './config.mjs';
 
 // ─── executeToolCalls ─────────────────────────────────────────────────────────
 

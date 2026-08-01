@@ -7,7 +7,7 @@
  * subagentTool uses dynamic import('./agent.mjs') to break circular dependency.
  */
 
-import { MIN_REPORT_CHARS } from './agent.mjs';
+import { MIN_REPORT_CHARS } from './config.mjs';
 import { loadSkills, formatSkillListing, readSkill } from './skills.mjs';
 import { execSync } from 'node:child_process';
 

@@ -13,6 +13,8 @@ import {
   TOOL_RESULT_OFFLOAD_LIMIT,
   TOOL_RESULT_PREVIEW,
   MAX_INSTRUCTION_CHARS,
+} from '../config.mjs';
+import {
   escapeXml,
   tryCanonicalize,
   repairHistory,

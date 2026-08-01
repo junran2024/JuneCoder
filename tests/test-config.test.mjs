@@ -11,7 +11,7 @@ import {
 describe('defaultConfig', () => {
   it('returns agent section with expected defaults', () => {
     const cfg = defaultConfig();
-    assert.strictEqual(cfg.agent.maxTurns, 50);
+    assert.strictEqual(cfg.agent.maxTurns, 100);
     assert.strictEqual(cfg.agent.subagentTurns, 20);
     assert.strictEqual(cfg.agent.goalTurns, 200);
     assert.ok(cfg.agent.contextWindow > 0);
@@ -31,7 +31,7 @@ describe('defaultConfig', () => {
     const a = defaultConfig();
     const b = defaultConfig();
     a.agent.maxTurns = 999;
-    assert.strictEqual(b.agent.maxTurns, 50);
+    assert.strictEqual(b.agent.maxTurns, 100);
   });
 });
 
