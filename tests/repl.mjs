@@ -1,21 +1,21 @@
 #!/usr/bin/env node
 /**
  * Interactive test REPL for the junecoder agent.
- * Usage: node --env-file=.env test.mjs
+ * Usage: DEEPSEEK_API_KEY=sk-... node tests/repl.mjs
  */
 import { createInterface } from 'node:readline';
 import { createAgent, runAgent } from '../agent.mjs';
-import { defaultConfig } from '../config.mjs';
+import { defaultAgentConfig } from '../config.mjs';
+import { getActiveProvider } from '../config-provider.mjs';
 
-const config = defaultConfig();
-const apiKey = process.env.DEEPSEEK_API_KEY;
+const provider = getActiveProvider();
 
-if (!apiKey) {
-  console.error('Error: DEEPSEEK_API_KEY not set in .env');
+if (!provider.apiKey) {
+  console.error('Error: No API key. Set DEEPSEEK_API_KEY env var or ~/.junecoder/config.json');
   process.exit(1);
 }
 
-config.provider.apiKey = apiKey;
+const config = { agent: defaultAgentConfig(), provider };
 
 const agent = createAgent({ provider: config.provider, config });
 

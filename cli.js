@@ -10,16 +10,16 @@
  *
  * API keys can be provided via:
  *   1. Interactive setup on first run (TUI)
- *   2. ~/.junecoder/.env (managed by /key command)
+ *   2. ~/.junecoder/config.json (managed by /key command)
  *   3. DEEPSEEK_API_KEY environment variable
  */
 import { existsSync, statSync, readFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { homedir } from 'node:os';
-import './env.mjs';
+import { getActiveProvider } from './config-provider.mjs';
 import { createAgent } from './agent.mjs';
 import { startTUI } from './tui.mjs';
-import { defaultConfig } from './config.mjs';
+import { defaultAgentConfig } from './config.mjs';
 import { loadSession } from './session.mjs';
 import { memoryDir } from './memory.mjs';
 
@@ -149,18 +149,10 @@ if (existsSync(targetDir) && statSync(targetDir).isDirectory()) {
   process.exit(1);
 }
 
-// Load config (defaults only — no config.json) and API key from env
-const config = defaultConfig();
-const apiKey = process.env.DEEPSEEK_API_KEY || '';
+// Load config: agent defaults from config.mjs, provider from ~/.junecoder/config.json
+const provider = getActiveProvider();
+const config = { agent: defaultAgentConfig(), provider };
 
-// Only treat as valid if it starts with sk- (DeepSeek key format)
-if (apiKey && !apiKey.startsWith('sk-')) {
-  config.provider.apiKey = '';  // invalid format, treat as not configured
-} else {
-  config.provider.apiKey = apiKey;
-}
-
-// Create Agent instance with target cwd
 const agent = createAgent({
   provider: config.provider,
   config,
@@ -196,4 +188,4 @@ if (!process.stdin.isTTY || !process.stdout.isTTY) {
 }
 
 const restored = loadSession(agent.cwd);
-startTUI(agent, { projectDir: agent.cwd, restored, needsSetup: !apiKey });
+startTUI(agent, { projectDir: agent.cwd, restored, needsSetup: !provider.apiKey });

@@ -8,9 +8,7 @@
  */
 import { emitKeypressEvents } from "node:readline";
 import { PassThrough } from "node:stream";
-import { basename, join } from "node:path";
-import { homedir } from "node:os";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { basename } from "node:path";
 import { runAgent, ContinueError } from "./agent.mjs";
 import {
   saveSession, clearSession, archiveCurrent,
@@ -469,13 +467,11 @@ export async function startTUI(agent, opts = {}) {
         return;
       }
 
-      const configDir = join(homedir(), '.junecoder');
-      if (!existsSync(configDir)) mkdirSync(configDir, { recursive: true });
-      writeFileSync(join(configDir, '.env'), `DEEPSEEK_API_KEY=${trimmed}\n`, 'utf-8');
-      process.env.DEEPSEEK_API_KEY = trimmed;
+      const { saveApiKey } = await import('./config-provider.mjs');
+      saveApiKey('deepseek', trimmed);
       agent.provider.apiKey = trimmed;
 
-      pushLine("API key saved to ~/.junecoder/.env", C.tool);
+      pushLine("API key saved to ~/.junecoder/config.json", C.tool);
       pushLine("", C.dim);
       setupMode = false;
       state.status = "Ready";

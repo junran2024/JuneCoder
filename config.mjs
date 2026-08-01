@@ -1,6 +1,6 @@
 /**
- * Configuration module — constants, configDir path, and default config factory.
- * No config.json support — API keys go in .env files (loaded by env.mjs).
+ * Configuration module — agent constants and defaults.
+ * Provider config is loaded separately by config-provider.mjs.
  */
 import { join } from 'node:path';
 import { homedir } from 'node:os';
@@ -28,24 +28,15 @@ export const VERIFY_CHECKLIST =
 /** Default config directory: ~/.junecoder */
 export const configDir = join(homedir(), '.junecoder');
 
-/** Default configuration object. Callers can spread/override with user settings. */
-export function defaultConfig() {
+// ─── Defaults ─────────────────────────────────────────────────────────────────
+
+/** Default agent configuration. Constants above are the single source of truth. */
+export function defaultAgentConfig() {
   return {
-    agent: {
-      maxTurns: 100,
-      subagentTurns: 20,
-      goalTurns: 200,
-      contextWindow: 1_000_000, // assumed model context window (estimated tokens)
-      compactThreshold: 750_000, // compress at 75% of contextWindow
-    },
-    provider: {
-      type: 'deepseek',
-      apiKey: '',  // injected by cli.js / TUI from env after load
-      model: 'deepseek-v4-pro',
-      baseURL: 'https://api.deepseek.com',
-      thinking: { type: 'enabled' },
-    },
+    maxTurns: DEFAULT_MAX_TURNS,
+    subagentTurns: DEFAULT_SUBAGENT_TURNS,
+    goalTurns: DEFAULT_GOAL_TURNS,
+    contextWindow: 1_000_000, // assumed model context window (estimated tokens)
+    compactThreshold: 750_000, // compress at 75% of contextWindow
   };
 }
-
-
