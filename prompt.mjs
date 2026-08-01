@@ -169,7 +169,7 @@ export function loadProjectInstructions(cwd) {
   return combined;
 }
 
-// ─── System Prompt Builder ────────────────────────────────────────────────────
+// ─── Prompt Builder ────────────────────────────────────────────────────
 
 export function buildSystemPrompt(agent, depth) {
   let prompt = DEFAULT_SYSTEM_PROMPT;
