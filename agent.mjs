@@ -8,114 +8,6 @@ import {
   VERIFY_CHECKLIST,
 } from './config.mjs';
 
-// ─── Pure Helpers ────────────────────────────────────────────────────────────
-
-/** Escape XML special characters. */
-export function escapeXml(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-/**
- * Canonicalize a tool call signature for duplication detection.
- * Returns "name:normalized-args" or null on parse failure.
- */
-export function tryCanonicalize(name, args) {
-  if (args === undefined || args === null) return `${name}:`;
-  try {
-    const parsed = typeof args === 'string' ? JSON.parse(args) : args;
-    return `${name}:${JSON.stringify(parsed, Object.keys(parsed).sort())}`;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Repair history: strip transient messages, ensure system prompt is first,
- * validate message structure.
- */
-export function repairHistory(history) {
-  if (!Array.isArray(history)) return [];
-
-  const cleaned = [];
-  let systemIdx = -1;
-
-  for (let i = 0; i < history.length; i++) {
-    const msg = history[i];
-    // Skip null/undefined or messages without a valid role
-    if (!msg || typeof msg.role !== 'string') continue;
-    // Skip transient messages
-    if (msg.transient || msg._transient) continue;
-
-    // Clone to avoid mutating original
-    const copy = { role: msg.role, content: msg.content };
-    if (msg.tool_calls) copy.tool_calls = msg.tool_calls;
-    if (msg.tool_call_id) copy.tool_call_id = msg.tool_call_id;
-    if (msg.name) copy.name = msg.name;
-    if (msg.reasoning_content) copy.reasoning_content = msg.reasoning_content;
-
-    if (copy.role === 'system') {
-      systemIdx = cleaned.length;
-    }
-    cleaned.push(copy);
-  }
-
-  // Move first system message to index 0 if it's not already there
-  if (systemIdx > 0) {
-    const sysMsg = cleaned.splice(systemIdx, 1)[0];
-    cleaned.unshift(sysMsg);
-  }
-
-  // Drop orphaned tool messages: a "tool" message is only valid as a response
-  // to a preceding assistant message carrying the matching tool_calls id.
-  // Truncation can cut the parent away, and providers reject the request (400).
-  const knownCallIds = new Set();
-  const repaired = [];
-  for (const msg of cleaned) {
-    if (msg.role === 'assistant' && Array.isArray(msg.tool_calls)) {
-      for (const tc of msg.tool_calls) {
-        if (tc && tc.id) knownCallIds.add(tc.id);
-      }
-    }
-    if (msg.role === 'tool' && !knownCallIds.has(msg.tool_call_id)) continue;
-    repaired.push(msg);
-  }
-
-  return repaired;
-}
-
-// ─── Default Callbacks ────────────────────────────────────────────────────────
-
-function defaultCallbacks(overrides = {}) {
-  return {
-    onToken: () => {},
-    onReasoning: () => {},
-    onToolCall: () => {},
-    onToolResult: () => {},
-    onToolOutput: () => {},
-    onPermissionRequest: async () => ({ allowed: true }),
-    onCompress: () => {},
-    onUsage: () => {},
-    onTurnEnd: () => {},
-    onTaskUpdate: () => {},
-    onQuestion: async () => '',
-    onSystem: () => {},
-    ...overrides,
-  };
-}
-
-// ─── ContinueError ────────────────────────────────────────────────────────────
-
-export class ContinueError extends Error {
-  constructor(message, turn) {
-    super(message);
-    this.name = 'ContinueError';
-    this.turn = turn;
-  }
-}
-
 // ─── Agent Factory ────────────────────────────────────────────────────────────
 
 export function createAgent(opts) {
@@ -229,6 +121,7 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
 
     // Build OpenAI-format tool schemas for the provider (deduped by name)
     const toolSchemas = [...toolByName.values()].map((t) => toolsModule.toOpenAISchema(t));
+    
     // Step 1: Increment counters
     agent._turnsSinceTaskUpdate++;
     if (agent.planMode) {
@@ -428,4 +321,110 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
   throw new ContinueError(`Agent exceeded max turns (${maxTurns}) without completing the task.`, maxTurns);
 }
 
+// ─── Pure Helpers ────────────────────────────────────────────────────────────
 
+/** Escape XML special characters. */
+export function escapeXml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/**
+ * Canonicalize a tool call signature for duplication detection.
+ * Returns "name:normalized-args" or null on parse failure.
+ */
+export function tryCanonicalize(name, args) {
+  if (args === undefined || args === null) return `${name}:`;
+  try {
+    const parsed = typeof args === 'string' ? JSON.parse(args) : args;
+    return `${name}:${JSON.stringify(parsed, Object.keys(parsed).sort())}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Repair history: strip transient messages, ensure system prompt is first,
+ * validate message structure.
+ */
+export function repairHistory(history) {
+  if (!Array.isArray(history)) return [];
+
+  const cleaned = [];
+  let systemIdx = -1;
+
+  for (let i = 0; i < history.length; i++) {
+    const msg = history[i];
+    // Skip null/undefined or messages without a valid role
+    if (!msg || typeof msg.role !== 'string') continue;
+    // Skip transient messages
+    if (msg.transient || msg._transient) continue;
+
+    // Clone to avoid mutating original
+    const copy = { role: msg.role, content: msg.content };
+    if (msg.tool_calls) copy.tool_calls = msg.tool_calls;
+    if (msg.tool_call_id) copy.tool_call_id = msg.tool_call_id;
+    if (msg.name) copy.name = msg.name;
+    if (msg.reasoning_content) copy.reasoning_content = msg.reasoning_content;
+
+    if (copy.role === 'system') {
+      systemIdx = cleaned.length;
+    }
+    cleaned.push(copy);
+  }
+
+  // Move first system message to index 0 if it's not already there
+  if (systemIdx > 0) {
+    const sysMsg = cleaned.splice(systemIdx, 1)[0];
+    cleaned.unshift(sysMsg);
+  }
+
+  // Drop orphaned tool messages: a "tool" message is only valid as a response
+  // to a preceding assistant message carrying the matching tool_calls id.
+  // Truncation can cut the parent away, and providers reject the request (400).
+  const knownCallIds = new Set();
+  const repaired = [];
+  for (const msg of cleaned) {
+    if (msg.role === 'assistant' && Array.isArray(msg.tool_calls)) {
+      for (const tc of msg.tool_calls) {
+        if (tc && tc.id) knownCallIds.add(tc.id);
+      }
+    }
+    if (msg.role === 'tool' && !knownCallIds.has(msg.tool_call_id)) continue;
+    repaired.push(msg);
+  }
+
+  return repaired;
+}
+
+// ─── Default Callbacks ────────────────────────────────────────────────────────
+
+function defaultCallbacks(overrides = {}) {
+  return {
+    onToken: () => {},
+    onReasoning: () => {},
+    onToolCall: () => {},
+    onToolResult: () => {},
+    onToolOutput: () => {},
+    onPermissionRequest: async () => ({ allowed: true }),
+    onCompress: () => {},
+    onUsage: () => {},
+    onTurnEnd: () => {},
+    onTaskUpdate: () => {},
+    onQuestion: async () => '',
+    onSystem: () => {},
+    ...overrides,
+  };
+}
+
+// ─── ContinueError ────────────────────────────────────────────────────────────
+
+export class ContinueError extends Error {
+  constructor(message, turn) {
+    super(message);
+    this.name = 'ContinueError';
+    this.turn = turn;
+  }
+}
