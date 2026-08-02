@@ -864,6 +864,8 @@
     let activeToolCards = new Map();
     let totalTokens = 0;
 
+    let activeCommand = null;
+
     // Command styles & badges mapping
     const COMMAND_STYLES = {
       '/plan': {
@@ -910,50 +912,72 @@
       }
     };
 
-    // Auto-resize textarea & handle command badges
-    promptInput.addEventListener('input', () => {
-      promptInput.style.height = 'auto';
-      promptInput.style.height = Math.min(promptInput.scrollHeight, 150) + 'px';
-
-      const val = promptInput.value.trimStart();
-
-      // Update command badge & colored input box
-      const match = val.match(/^(\/[a-z]+)/i);
-      const cmd = match ? match[1].toLowerCase() : null;
-      const style = cmd ? COMMAND_STYLES[cmd] : null;
-
+    function setCommandBadge(cmd) {
+      const style = COMMAND_STYLES[cmd];
       if (style) {
+        activeCommand = cmd;
         inputWrapper.style.backgroundColor = style.bgColor;
         inputWrapper.style.borderColor = style.borderColor;
         inputWrapper.style.boxShadow = `0 0 12px ${style.bgColor}`;
         cmdBadge.style.color = style.color;
         cmdBadge.style.background = `rgba(0, 0, 0, 0.3)`;
-        cmdBadge.innerHTML = `<span>${style.icon}</span> <span>${style.label}</span>`;
+        cmdBadge.innerHTML = `<span>${style.icon}</span> <span>${style.label}</span> <span style="margin-left:4px;cursor:pointer;opacity:0.7;" onclick="clearCommandBadge()">×</span>`;
         cmdBadge.classList.add('active');
-      } else {
-        inputWrapper.style.backgroundColor = '';
-        inputWrapper.style.borderColor = '';
-        inputWrapper.style.boxShadow = '';
-        cmdBadge.classList.remove('active');
-        cmdBadge.innerHTML = '';
+        promptInput.placeholder = `Arguments for ${style.label}...`;
+      }
+    }
+
+    function clearCommandBadge() {
+      activeCommand = null;
+      inputWrapper.style.backgroundColor = '';
+      inputWrapper.style.borderColor = '';
+      inputWrapper.style.boxShadow = '';
+      cmdBadge.classList.remove('active');
+      cmdBadge.innerHTML = '';
+      promptInput.placeholder = 'Type a prompt or / command... (Enter to send, Shift+Enter for newline)';
+    }
+
+    // Auto-resize textarea & handle command badges
+    promptInput.addEventListener('input', () => {
+      promptInput.style.height = 'auto';
+      promptInput.style.height = Math.min(promptInput.scrollHeight, 150) + 'px';
+
+      const val = promptInput.value;
+
+      // Detect if user typed a command prefix like "/goal " or "/plan " or "/goal"
+      const match = val.match(/^(\/[a-z]+)(\s+|$)/i);
+      if (match) {
+        const cmd = match[1].toLowerCase();
+        if (COMMAND_STYLES[cmd]) {
+          setCommandBadge(cmd);
+          // Strip the command from the input field so only badge is visible
+          promptInput.value = val.slice(match[0].length);
+          slashPopover.classList.remove('active');
+          return;
+        }
       }
 
       // Handle slash autocomplete popover
-      if (val.startsWith('/')) {
+      if (!activeCommand && val.startsWith('/')) {
         slashPopover.classList.add('active');
       } else {
         slashPopover.classList.remove('active');
       }
     });
 
-    // Keydown handlers (Enter to submit, Shift+Enter newline)
+    // Keydown handlers (Enter to submit, Backspace to clear badge)
     promptInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Backspace' && promptInput.value === '' && activeCommand) {
+        clearCommandBadge();
+        e.preventDefault();
+        return;
+      }
+
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         submitPrompt();
       }
     });
-
     btnSend.addEventListener('click', () => {
       if (isProcessing) {
         vscode.postMessage({ type: 'abort' });
@@ -971,19 +995,23 @@
     });
 
     function applySlash(cmd) {
-      promptInput.value = cmd;
-      promptInput.dispatchEvent(new Event('input'));
+      setCommandBadge(cmd);
+      promptInput.value = '';
       slashPopover.classList.remove('active');
       promptInput.focus();
     }
 
     function submitPrompt() {
-      const text = promptInput.value.trim();
+      const rawText = promptInput.value.trim();
+      const text = activeCommand
+        ? (rawText ? `${activeCommand} ${rawText}` : activeCommand)
+        : rawText;
+
       if (!text || isProcessing) return;
 
+      clearCommandBadge();
       promptInput.value = '';
       promptInput.style.height = 'auto';
-      promptInput.dispatchEvent(new Event('input'));
       slashPopover.classList.remove('active');
 
       // Render User Message
