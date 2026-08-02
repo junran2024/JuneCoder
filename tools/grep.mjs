@@ -7,8 +7,9 @@
  *     (alternation `a|b`, `\d`, `+`, `(…)`, etc. all work as expected)
  *   - no shell escaping, no BSD/GNU grep differences, no grep binary needed
  */
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, createReadStream, statSync } from 'node:fs';
 import { resolve, relative, basename } from 'node:path';
+import { StringDecoder } from 'node:string_decoder';
 
 const IGNORED_DIRS = new Set([
   'node_modules', '.git', 'dist', 'build', '.turbo', 'coverage',
@@ -70,12 +71,12 @@ export const grepTool = {
 
     try {
       if (st.isFile()) {
-        scanFile(base, regex, fileMatcher, results, () => totalMatches++);
+        await scanFile(base, regex, fileMatcher, results, () => totalMatches++);
       } else {
         for (const relPath of walkFilesSync(base)) {
           const abs = resolve(base, relPath);
           if (fileMatcher && !fileMatcher(relPath, basename(relPath))) continue;
-          scanFile(abs, regex, null, results, () => totalMatches++);
+          await scanFile(abs, regex, null, results, () => totalMatches++);
         }
       }
     } catch (err) {
@@ -95,30 +96,50 @@ export const grepTool = {
   },
 };
 
-/** Search a single file for regex matches. */
-function scanFile(abs, regex, fileMatcher, results, countMatch) {
+/**
+ * Stream a file and test each line against the regex.
+ * Memory use is O(longest line), not O(file size) — safe for GB-level files.
+ */
+async function scanFile(abs, regex, fileMatcher, results, countMatch) {
   if (fileMatcher) {
     // Single-file mode: apply the glob to the file name.
     const name = basename(abs);
     if (!fileMatcher(name, name)) return;
   }
-  const buf = readFileSync(abs);
-  if (buf.length === 0) return;
-  // Treat files containing NUL bytes as binary and skip them (like grep -I).
-  if (buf.includes(0)) return;
 
-  const text = buf.toString('utf-8');
-  const lines = text.split(/\r?\n/);
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (!regex.test(line)) continue;
+  const decoder = new StringDecoder('utf-8');
+  const stream = createReadStream(abs, { highWaterMark: 1 << 20 }); // 1 MB chunks
+  let pending = '';
+  let lineNo = 1;
+
+  const emit = (line) => {
+    if (!regex.test(line)) return;
     countMatch();
     if (results.length < MAX_RESULTS) {
       const content = line.length > MAX_LINE_CHARS
         ? line.slice(0, MAX_LINE_CHARS) + '…'
         : line;
-      results.push({ path: displayPath(abs), line: i + 1, content });
+      results.push({ path: displayPath(abs), line: lineNo, content });
     }
+  };
+
+  for await (const chunk of stream) {
+    // Binary detection: a UTF-8 text file never contains NUL bytes.
+    if (chunk.includes(0)) return;
+    pending += decoder.write(chunk);
+    let idx;
+    while ((idx = pending.indexOf('\n')) !== -1) {
+      const line = pending.slice(0, idx);
+      pending = pending.slice(idx + 1);
+      // Strip a trailing \r (CRLF) at line-emit time so a \r\n pair split
+      // across chunk boundaries is handled correctly.
+      emit(line.endsWith('\r') ? line.slice(0, -1) : line);
+      lineNo++;
+    }
+  }
+  // Last line may have no trailing newline.
+  if (pending) {
+    emit(pending.endsWith('\r') ? pending.slice(0, -1) : pending);
   }
 }
 
