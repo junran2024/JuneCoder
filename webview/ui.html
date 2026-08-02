@@ -629,9 +629,16 @@
     }
 
     .slash-cmd {
-      color: var(--accent);
       font-weight: 600;
       font-family: var(--font-code);
+    }
+
+    .slash-cmd.agent {
+      color: var(--accent);
+    }
+
+    .slash-cmd.system {
+      color: var(--success);
     }
 
     .slash-desc {
@@ -822,32 +829,30 @@
 
   <!-- Slash Commands Popover -->
   <div class="slash-popover" id="slash-popover">
-    <div class="slash-category-header">System Commands</div>
-    <div class="slash-item" onclick="applySlash('/help')">
-      <span class="slash-cmd">/help</span>
-      <span class="slash-desc">Show available commands and usage</span>
-    </div>
-    <div class="slash-item" onclick="applySlash('/clear')">
-      <span class="slash-cmd">/clear</span>
-      <span class="slash-desc">Clear current conversation history</span>
-    </div>
-    <div class="slash-item" onclick="applySlash('/key')">
-      <span class="slash-cmd">/key</span>
-      <span class="slash-desc">Configure DeepSeek API key</span>
-    </div>
-    <div class="slash-item" onclick="applySlash('/distill')">
-      <span class="slash-cmd">/distill</span>
-      <span class="slash-desc">Extract key insights into long-term memory</span>
-    </div>
-    <div class="slash-divider"></div>
-    <div class="slash-category-header">Agent Commands</div>
     <div class="slash-item" onclick="applySlash('/plan')">
-      <span class="slash-cmd">/plan</span>
+      <span class="slash-cmd agent">/plan</span>
       <span class="slash-desc">Toggle read-only plan mode</span>
     </div>
     <div class="slash-item" onclick="applySlash('/goal')">
-      <span class="slash-cmd">/goal</span>
+      <span class="slash-cmd agent">/goal</span>
       <span class="slash-desc">Start goal-oriented mode with higher turn budget</span>
+    </div>
+    <div class="slash-divider"></div>
+    <div class="slash-item" onclick="applySlash('/help')">
+      <span class="slash-cmd system">/help</span>
+      <span class="slash-desc">Show available commands and usage</span>
+    </div>
+    <div class="slash-item" onclick="applySlash('/clear')">
+      <span class="slash-cmd system">/clear</span>
+      <span class="slash-desc">Clear current conversation history</span>
+    </div>
+    <div class="slash-item" onclick="applySlash('/key')">
+      <span class="slash-cmd system">/key</span>
+      <span class="slash-desc">Configure DeepSeek API key</span>
+    </div>
+    <div class="slash-item" onclick="applySlash('/distill')">
+      <span class="slash-cmd system">/distill</span>
+      <span class="slash-desc">Extract key insights into long-term memory</span>
     </div>
   </div>
 
@@ -895,12 +900,12 @@
     let filteredCommands = [];
 
     const COMMANDS_LIST = [
+      { cmd: '/plan', desc: 'Toggle read-only plan mode', category: 'agent' },
+      { cmd: '/goal', desc: 'Start goal-oriented mode with higher turn budget', category: 'agent' },
       { cmd: '/help', desc: 'Show available commands and usage', category: 'system' },
       { cmd: '/clear', desc: 'Clear current conversation history', category: 'system' },
       { cmd: '/key', desc: 'Configure DeepSeek API key', category: 'system' },
-      { cmd: '/distill', desc: 'Extract key insights into long-term memory', category: 'system' },
-      { cmd: '/plan', desc: 'Toggle read-only plan mode', category: 'agent' },
-      { cmd: '/goal', desc: 'Start goal-oriented mode with higher turn budget', category: 'agent' }
+      { cmd: '/distill', desc: 'Extract key insights into long-term memory', category: 'system' }
     ];
 
     // Command styles & badges mapping
@@ -1026,9 +1031,9 @@
       }))
       .filter(item => item.score > 0)
       .sort((a, b) => {
-        // Group system commands first, then agent commands when pattern is just '/'
+        // Agent commands on top, system commands at bottom when query is just '/' or empty
         if (a.category !== b.category && !queryPattern.replace(/^\//, '').trim()) {
-          return a.category === 'system' ? -1 : 1;
+          return a.category === 'agent' ? -1 : 1;
         }
         return b.score - a.score;
       });
@@ -1055,7 +1060,7 @@
 
         html += `
           <div class="slash-item ${idx === selectedPopoverIdx ? 'selected' : ''}" onclick="applySlash('${item.cmd}')" data-idx="${idx}">
-            <span class="slash-cmd">${highlightCommandMatch(item.cmd, queryPattern)}</span>
+            <span class="slash-cmd ${item.category}">${highlightCommandMatch(item.cmd, queryPattern)}</span>
             <span class="slash-desc">${escapeHtml(item.desc)}</span>
           </div>
         `;
