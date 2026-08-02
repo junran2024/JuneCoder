@@ -299,7 +299,27 @@
       border-bottom-left-radius: 2px;
     }
 
-    /* Markdown Styling inside Messages */
+    /* Formatted Markdown inside Assistant Messages */
+    .msg-body h1 {
+      font-size: 16px;
+      margin: 10px 0 6px 0;
+      color: var(--accent);
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 4px;
+    }
+
+    .msg-body h2 {
+      font-size: 14px;
+      margin: 8px 0 4px 0;
+      color: var(--orange);
+    }
+
+    .msg-body h3 {
+      font-size: 13px;
+      margin: 6px 0 4px 0;
+      color: var(--purple);
+    }
+
     .msg-body p {
       margin-bottom: 8px;
     }
@@ -308,12 +328,21 @@
       margin-bottom: 0;
     }
 
+    .msg-body ul, .msg-body ol {
+      margin: 6px 0 8px 18px;
+    }
+
+    .msg-body li {
+      margin-bottom: 3px;
+    }
+
     .msg-body code {
       font-family: var(--font-code);
-      background: rgba(0, 0, 0, 0.25);
+      background: rgba(0, 0, 0, 0.3);
       padding: 2px 5px;
       border-radius: 4px;
       font-size: 12px;
+      color: #f5c2e7;
     }
 
     .user .msg-body code {
@@ -542,35 +571,6 @@
       transform: translateY(-1px);
     }
 
-    /* Quick Action Pills */
-    .quick-actions {
-      display: flex;
-      gap: 6px;
-      padding: 8px 14px;
-      overflow-x: auto;
-      background: var(--bg-secondary);
-      border-top: 1px solid var(--border-color);
-      flex-shrink: 0;
-    }
-
-    .quick-pill {
-      background: var(--bg-tertiary);
-      border: 1px solid var(--border-color);
-      color: var(--text-muted);
-      padding: 4px 10px;
-      border-radius: 14px;
-      font-size: 11px;
-      white-space: nowrap;
-      cursor: pointer;
-      transition: all 0.15s ease;
-    }
-
-    .quick-pill:hover {
-      background: var(--accent);
-      color: var(--accent-fg);
-      border-color: var(--accent);
-    }
-
     /* Slash Autocomplete Popover */
     .slash-popover {
       position: absolute;
@@ -630,18 +630,36 @@
 
     .input-wrapper {
       display: flex;
-      align-items: flex-end;
+      align-items: center;
       gap: 8px;
       background: var(--bg-tertiary);
       border: 1px solid var(--border-color);
       border-radius: 8px;
       padding: 8px 12px;
-      transition: border-color 0.15s ease;
+      transition: all 0.2s ease-in-out;
     }
 
     .input-wrapper:focus-within {
       border-color: var(--accent);
       box-shadow: 0 0 0 2px rgba(137, 180, 250, 0.2);
+    }
+
+    /* Command Badge Indicator */
+    .cmd-badge {
+      display: none;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+      user-select: none;
+      animation: fadeIn 0.15s ease;
+    }
+
+    .cmd-badge.active {
+      display: flex;
     }
 
     textarea#prompt-input {
@@ -779,15 +797,6 @@
     </div>
   </div>
 
-  <!-- Quick Action Pills -->
-  <div class="quick-actions">
-    <div class="quick-pill" onclick="sendQuickPrompt('Explain the structure of this workspace')">💡 Explain workspace</div>
-    <div class="quick-pill" onclick="sendQuickPrompt('Check for lint or syntax errors')">🔍 Check errors</div>
-    <div class="quick-pill" onclick="sendQuickPrompt('Add unit tests for recent changes')">🧪 Add unit tests</div>
-    <div class="quick-pill" onclick="sendQuickPrompt('/plan Enter plan mode to design next feature')">📝 Plan mode</div>
-    <div class="quick-pill" onclick="sendQuickPrompt('/goal Enable goal mode')">🎯 Goal mode</div>
-  </div>
-
   <!-- Slash Commands Popover -->
   <div class="slash-popover" id="slash-popover">
     <div class="slash-item" onclick="applySlash('/help')">
@@ -818,7 +827,8 @@
 
   <!-- Footer Input Area -->
   <div class="footer-container">
-    <div class="input-wrapper">
+    <div class="input-wrapper" id="input-wrapper">
+      <div class="cmd-badge" id="cmd-badge"></div>
       <textarea id="prompt-input" rows="1" placeholder="Type a prompt or / command... (Enter to send, Shift+Enter for newline)"></textarea>
       <button class="send-btn" id="btn-send" title="Send message">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
@@ -835,6 +845,8 @@
 
     const chatContainer = document.getElementById('chat-container');
     const promptInput = document.getElementById('prompt-input');
+    const inputWrapper = document.getElementById('input-wrapper');
+    const cmdBadge = document.getElementById('cmd-badge');
     const btnSend = document.getElementById('btn-send');
     const projectPathEl = document.getElementById('project-path');
     const tokenCountEl = document.getElementById('token-count');
@@ -847,17 +859,86 @@
 
     let isProcessing = false;
     let currentAssistantBody = null;
+    let currentAssistantText = '';
     let currentReasoningBox = null;
     let activeToolCards = new Map();
     let totalTokens = 0;
 
-    // Auto-resize textarea
+    // Command styles & badges mapping
+    const COMMAND_STYLES = {
+      '/plan': {
+        icon: '📝',
+        label: 'Plan Mode',
+        color: '#cba6f7',
+        bgColor: 'rgba(203, 166, 247, 0.15)',
+        borderColor: '#cba6f7'
+      },
+      '/goal': {
+        icon: '🎯',
+        label: 'Goal Mode',
+        color: '#fab387',
+        bgColor: 'rgba(250, 179, 135, 0.15)',
+        borderColor: '#fab387'
+      },
+      '/help': {
+        icon: '💡',
+        label: 'Help',
+        color: '#89b4fa',
+        bgColor: 'rgba(137, 180, 250, 0.15)',
+        borderColor: '#89b4fa'
+      },
+      '/clear': {
+        icon: '🗑️',
+        label: 'Clear',
+        color: '#f38ba8',
+        bgColor: 'rgba(243, 139, 168, 0.15)',
+        borderColor: '#f38ba8'
+      },
+      '/key': {
+        icon: '🔑',
+        label: 'API Key',
+        color: '#94e2d5',
+        bgColor: 'rgba(148, 226, 213, 0.15)',
+        borderColor: '#94e2d5'
+      },
+      '/distill': {
+        icon: '🧠',
+        label: 'Distill',
+        color: '#f5c2e7',
+        bgColor: 'rgba(245, 194, 231, 0.15)',
+        borderColor: '#f5c2e7'
+      }
+    };
+
+    // Auto-resize textarea & handle command badges
     promptInput.addEventListener('input', () => {
       promptInput.style.height = 'auto';
       promptInput.style.height = Math.min(promptInput.scrollHeight, 150) + 'px';
 
+      const val = promptInput.value.trimStart();
+
+      // Update command badge & colored input box
+      const match = val.match(/^(\/[a-z]+)/i);
+      const cmd = match ? match[1].toLowerCase() : null;
+      const style = cmd ? COMMAND_STYLES[cmd] : null;
+
+      if (style) {
+        inputWrapper.style.backgroundColor = style.bgColor;
+        inputWrapper.style.borderColor = style.borderColor;
+        inputWrapper.style.boxShadow = `0 0 12px ${style.bgColor}`;
+        cmdBadge.style.color = style.color;
+        cmdBadge.style.background = `rgba(0, 0, 0, 0.3)`;
+        cmdBadge.innerHTML = `<span>${style.icon}</span> <span>${style.label}</span>`;
+        cmdBadge.classList.add('active');
+      } else {
+        inputWrapper.style.backgroundColor = '';
+        inputWrapper.style.borderColor = '';
+        inputWrapper.style.boxShadow = '';
+        cmdBadge.classList.remove('active');
+        cmdBadge.innerHTML = '';
+      }
+
       // Handle slash autocomplete popover
-      const val = promptInput.value;
       if (val.startsWith('/')) {
         slashPopover.classList.add('active');
       } else {
@@ -889,13 +970,9 @@
       vscode.postMessage({ type: 'command', command: '/key' });
     });
 
-    function sendQuickPrompt(text) {
-      promptInput.value = text;
-      submitPrompt();
-    }
-
     function applySlash(cmd) {
       promptInput.value = cmd;
+      promptInput.dispatchEvent(new Event('input'));
       slashPopover.classList.remove('active');
       promptInput.focus();
     }
@@ -906,6 +983,7 @@
 
       promptInput.value = '';
       promptInput.style.height = 'auto';
+      promptInput.dispatchEvent(new Event('input'));
       slashPopover.classList.remove('active');
 
       // Render User Message
@@ -956,8 +1034,62 @@
         `;
         chatContainer.appendChild(msgDiv);
         currentAssistantBody = msgDiv.querySelector('.msg-body');
+        currentAssistantText = '';
       }
       return currentAssistantBody;
+    }
+
+    // Zero-dependency Markdown Renderer
+    function renderMarkdown(md) {
+      if (!md) return '';
+
+      // Preserve code blocks first
+      const codeBlocks = [];
+      let text = md.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
+        const idx = codeBlocks.length;
+        const escaped = escapeHtml(code.trim());
+        codeBlocks.push(
+          `<pre><button class="copy-btn" onclick="copyCode(this)">Copy</button><code class="language-${lang}">${escaped}</code></pre>`
+        );
+        return `___CODE_BLOCK_${idx}___`;
+      });
+
+      // Escape raw HTML outside code blocks
+      let html = escapeHtml(text);
+
+      // Headers (#, ##, ###)
+      html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+      html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+      html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+
+      // Bold & Italics
+      html = html.replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>');
+      html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+      html = html.replace(/`(.*?)`/g, '<code>$1</code>');
+
+      // Unordered lists (- or *)
+      html = html.replace(/^\s*[-*]\s+(.*$)/gim, '<li>$1</li>');
+      html = html.replace(/(<li>.*<\/li>)/gim, '<ul>$1</ul>');
+      html = html.replace(/<\/ul>\s*<ul>/g, '');
+
+      // Paragraphs & newlines
+      html = html.replace(/\n\n+/g, '</p><p>');
+      html = html.replace(/\n/g, '<br>');
+
+      // Restore code blocks
+      codeBlocks.forEach((block, idx) => {
+        html = html.replace(`___CODE_BLOCK_${idx}___`, block);
+      });
+
+      return `<p>${html}</p>`;
+    }
+
+    function copyCode(btn) {
+      const code = btn.nextElementSibling.innerText;
+      navigator.clipboard.writeText(code);
+      btn.innerText = 'Copied!';
+      setTimeout(() => { btn.innerText = 'Copy'; }, 2000);
     }
 
     // Process incoming IPC messages from Extension Host
@@ -972,7 +1104,8 @@
         case 'token':
           {
             const body = ensureAssistantMessage();
-            body.innerHTML += escapeHtml(msg.text);
+            currentAssistantText += msg.text;
+            body.innerHTML = renderMarkdown(currentAssistantText);
             scrollToBottom();
           }
           break;
@@ -1075,12 +1208,14 @@
         case 'agentComplete':
           setProcessingState(false);
           currentAssistantBody = null;
+          currentAssistantText = '';
           currentReasoningBox = null;
           break;
 
         case 'clear':
           chatContainer.innerHTML = '';
           currentAssistantBody = null;
+          currentAssistantText = '';
           currentReasoningBox = null;
           break;
 
