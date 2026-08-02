@@ -19,16 +19,21 @@ async function reloadMod() {
   return await import(`../prompt.mjs?reload=${ts}`);
 }
 
+let oldUserProfile;
+
 describe('prompt', () => {
   before(async () => {
     tmpHome = freshHome();
     oldHome = process.env.HOME;
+    oldUserProfile = process.env.USERPROFILE;
     process.env.HOME = tmpHome;
+    process.env.USERPROFILE = tmpHome;
     mod = await reloadMod();
   });
 
   after(() => {
     process.env.HOME = oldHome;
+    process.env.USERPROFILE = oldUserProfile;
     rmSync(tmpHome, { recursive: true, force: true });
   });
 

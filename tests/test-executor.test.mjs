@@ -312,7 +312,7 @@ describe('executeToolCalls', () => {
     })]);
     const r = await executeToolCalls(agent(), tools, tc);
     assert.ok(r[0].output.includes('[Result offloaded:'));
-    assert.ok(r[0].output.includes('junecoder/tool-results'));
+    assert.ok(r[0].output.includes('junecoder/tool-results') || r[0].output.includes('junecoder\\tool-results'));
     // Preview should be present
     assert.ok(r[0].output.startsWith('x'.repeat(500)));
   });

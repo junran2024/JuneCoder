@@ -9,6 +9,8 @@ let tmpHome;
 let mod;
 let oldHome;
 
+let oldUserProfile;
+
 function freshHome() {
   const dir = mkdtempSync(join(tmpdir(), 'junecoder-cfg-'));
   mkdirSync(join(dir, '.junecoder'), { recursive: true });
@@ -24,12 +26,15 @@ describe('config-provider', () => {
   before(async () => {
     tmpHome = freshHome();
     oldHome = process.env.HOME;
+    oldUserProfile = process.env.USERPROFILE;
     process.env.HOME = tmpHome;
+    process.env.USERPROFILE = tmpHome;
     mod = await reloadMod();
   });
 
   after(() => {
     process.env.HOME = oldHome;
+    process.env.USERPROFILE = oldUserProfile;
     rmSync(tmpHome, { recursive: true, force: true });
   });
 
