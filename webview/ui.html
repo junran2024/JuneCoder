@@ -829,6 +829,10 @@
 
   <!-- Slash Commands Popover -->
   <div class="slash-popover" id="slash-popover">
+    <div class="slash-item" onclick="applySlash('/agent')">
+      <span class="slash-cmd agent">/agent</span>
+      <span class="slash-desc">Standard interactive ReAct coding agent (default)</span>
+    </div>
     <div class="slash-item" onclick="applySlash('/plan')">
       <span class="slash-cmd agent">/plan</span>
       <span class="slash-desc">Toggle read-only plan mode</span>
@@ -900,6 +904,7 @@
     let filteredCommands = [];
 
     const COMMANDS_LIST = [
+      { cmd: '/agent', desc: 'Standard interactive ReAct coding agent (default)', category: 'agent' },
       { cmd: '/plan', desc: 'Toggle read-only plan mode', category: 'agent' },
       { cmd: '/goal', desc: 'Start goal-oriented mode with higher turn budget', category: 'agent' },
       { cmd: '/help', desc: 'Show available commands and usage', category: 'system' },
@@ -910,6 +915,13 @@
 
     // Command styles & badges mapping
     const COMMAND_STYLES = {
+      '/agent': {
+        icon: '🤖',
+        label: 'Agent Mode',
+        color: '#89b4fa',
+        bgColor: 'rgba(137, 180, 250, 0.15)',
+        borderColor: '#89b4fa'
+      },
       '/plan': {
         icon: '📝',
         label: 'Plan Mode',

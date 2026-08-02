@@ -269,6 +269,16 @@ Welcome to **JuneCoder**, your zero-dependency AI coding agent inside VS Code!
       return;
     }
 
+    let cleanPrompt = promptText;
+    if (cmd === '/agent') {
+      cleanPrompt = promptText.replace(/^\/agent\s*/i, '');
+      if (!cleanPrompt) {
+        this.postMessage({ type: 'systemMessage', tag: 'System', text: 'Agent mode active (default mode).' });
+        this.postMessage({ type: 'agentComplete' });
+        return;
+      }
+    }
+
     // Check API Key
     const providerConfig = getActiveProvider();
     if (!providerConfig.apiKey) {
@@ -317,7 +327,7 @@ Welcome to **JuneCoder**, your zero-dependency AI coding agent inside VS Code!
     };
 
     try {
-      await runAgent(this.agent, promptText, callbacks, { signal: this._abortController.signal });
+      await runAgent(this.agent, cleanPrompt, callbacks, { signal: this._abortController.signal });
       saveSession(this.agent, []);
     } catch (err) {
       if (err.name !== 'AbortError') {
