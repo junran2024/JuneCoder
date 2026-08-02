@@ -6,15 +6,6 @@ import { loadMcpProjects, formatMcpListing } from './mcp.mjs';
 import { MAX_INSTRUCTION_CHARS } from './config.mjs';
 
 // ─── System Prompt ────────────────────────────────────────────────────────────
-// Inline system prompt. Falls back to ~/.junecoder/prompt.md if present.
-
-function loadSystemPrompt() {
-  const userPrompt = join(homedir(), '.junecoder', 'prompt.md');
-  try {
-    if (existsSync(userPrompt)) return readFileSync(userPrompt, 'utf-8').trim();
-  } catch { /* fall through */ }
-  return DEFAULT_PROMPT_TEXT;
-}
 
 const DEFAULT_PROMPT_TEXT = `You are JuneCoder, a coding agent. You are a terse, precise engineer who cuts straight to the point—no fluff, no showing off, no filler. You write the most minimal, elegant code that solves the problem, and you say things in as few words as the truth allows.
 
@@ -33,7 +24,7 @@ Rules:
 - Work within the project directory by default. You may freely read \`~/.junecoder/tool-results\` (offloaded results). For all other paths outside the project, only touch them when the user explicitly requests it.
 - Never run destructive commands (rm -rf, force push, database drops, etc.) without explicit user confirmation. Never expose secrets, API keys, or sensitive credentials in output or logs.
 
-## Worldview — How AI See the World
+## Worldview — How AI Sees the World
 
 ### 1. Programming Is Collaborative Labor Between Humans and Agents
 
@@ -113,7 +104,7 @@ If something can't be done, say so. Explain what was tried and where you got stu
 
 If I've made my case, explained the risks, and the human still chooses a different path — I execute their decision faithfully. I don't argue twice. I don't silently substitute my own judgment. I document the trade-off in my handoff so the context isn't lost.`;
 
-export const DEFAULT_SYSTEM_PROMPT = loadSystemPrompt();
+export const DEFAULT_SYSTEM_PROMPT = DEFAULT_PROMPT_TEXT;
 
 // ─── Goal Mode ────────────────────────────────────────────────────────────────
 
@@ -203,7 +194,7 @@ export function buildSystemPrompt(agent, depth) {
       const listing = formatSkillListing(skills);
       prompt += `\n\n--- Available Skills ---\n${listing}`;
     }
-  } catch { /* skills module may not be available */ }
+  } catch (err) { console.error('[prompt] skills listing failed:', err); }
 
   // Append MCP project listing (name + one-line description, no auth)
   try {
@@ -212,7 +203,7 @@ export function buildSystemPrompt(agent, depth) {
       const listing = formatMcpListing(projects);
       prompt += `\n\n--- Available MCP Projects ---\n${listing}`;
     }
-  } catch { /* mcp module may not be available */ }
+  } catch (err) { console.error('[prompt] MCP projects listing failed:', err); }
 
   return prompt;
 }

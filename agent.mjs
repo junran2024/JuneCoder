@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { DEFAULT_SYSTEM_PROMPT, GOAL_MODE_PREAMBLE, buildSystemPrompt, loadProjectInstructions } from './prompt.mjs';
+import { GOAL_MODE_PREAMBLE, buildSystemPrompt } from './prompt.mjs';
 import {
   DEFAULT_MAX_TURNS,
   DEFAULT_SUBAGENT_TURNS,
