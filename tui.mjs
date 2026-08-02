@@ -36,6 +36,19 @@ const C = {
   error: ansi.fg(1), dim: ansi.gray, warn: ansi.fg(3),
 };
 
+// Semantic roles for persisted conversation lines. The session file stores
+// only these role names — colors are terminal-only and defined here in code,
+// so a restored session renders identically without ever writing ANSI to disk.
+const ROLES = {
+  ...C,
+  paste: pasteYellow,
+  labelUser: ansi.bold + yellow,
+  labelAssistant: ansi.bold + orange,
+  labelGoal: ansi.bold + orange,
+  labelTool: ansi.bold + orange,
+  labelWarn: ansi.bold + ansi.fg(3),
+};
+
 export function charWidth(cp) {
   if ((cp >= 0x300 && cp <= 0x36f) || (cp >= 0x200b && cp <= 0x200f) || cp === 0xfe0f) return 0;
   if ((cp >= 0x1100 && cp <= 0x115f) || (cp >= 0x2e80 && cp <= 0xa4cf) ||
@@ -144,18 +157,18 @@ export async function startTUI(agent, opts = {}) {
 
   const fmtK = n => n >= 10000 ? Math.round(n/1000) + "k" : n >= 1000 ? (n/1000).toFixed(1) + "k" : String(n);
 
-  const pushLine = (text, color) => {
-    state.lines.push({ text, color });
+  const pushLine = (text, role = "text") => {
+    state.lines.push({ text, role });
     if (state.lines.length > 5000) state.lines.splice(0, 1000);
     render();
   };
-  const pushLabel = (text, color) => {
-    if (state.lines.length > 0) state.lines.push({ text: "", color: C.dim });
-    state.lines.push({ text, color }); render();
+  const pushLabel = (text, role) => {
+    if (state.lines.length > 0) state.lines.push({ text: "", role: "dim" });
+    state.lines.push({ text, role }); render();
   };
   let assistantLabeled = false;
   const ensureAssistantLabel = () => {
-    if (!assistantLabeled) { assistantLabeled = true; pushLabel("\u276f JuneCoder:", ansi.bold + C.assistant); }
+    if (!assistantLabeled) { assistantLabeled = true; pushLabel("\u276f JuneCoder:", "labelAssistant"); }
   };
 
   let lastFrame = "", renderTimer = null;
@@ -200,7 +213,7 @@ export async function startTUI(agent, opts = {}) {
 
     const convLines = [];
     for (const l of state.lines) {
-      for (const wrapped of wrapText(sanitizeDisplay(l.text), W)) convLines.push({ text: wrapped, color: l.color });
+      for (const wrapped of wrapText(sanitizeDisplay(l.text), W)) convLines.push({ text: wrapped, color: ROLES[l.role] || C.text });
     }
     if (state.reasoning) { for (const wrapped of wrapText(sanitizeDisplay(state.reasoning), W)) convLines.push({ text: wrapped, color: C.reason }); }
     if (state.streaming) { for (const wrapped of wrapText(sanitizeDisplay(state.streaming), W)) convLines.push({ text: wrapped, color: C.text }); }
@@ -306,7 +319,7 @@ export async function startTUI(agent, opts = {}) {
       } else {
         const ch = (str || key.name || "").toLowerCase();
         if (ch === "y" || key.name === "y") state.permission.resolve({ allowed: true });
-        else if (ch === "a" || key.name === "a") { agent.autoApprove = true; state.permission.resolve({ allowed: true }); pushLine("  [auto] Auto-approve ON.", C.warn); }
+        else if (ch === "a" || key.name === "a") { agent.autoApprove = true; state.permission.resolve({ allowed: true }); pushLine("  [auto] Auto-approve ON.", "warn"); }
         else if (ch === "n" || key.name === "n") {
           // Enter reason mode
           state.permission.reasonMode = true;
@@ -402,13 +415,13 @@ export async function startTUI(agent, opts = {}) {
   // ─── First-run setup: capture API key from input box ──────────────────────────
   let setupMode = opts.needsSetup;
   if (setupMode) {
-    pushLine("", C.dim);
-    pushLine("", C.dim);
-    pushLine("", C.dim);
-    pushLine("Welcome to JuneCoder!", ansi.bold + C.assistant);
-    pushLine("Before you start, you need a DeepSeek API key.", C.text);
-    pushLine("Get one at: https://platform.deepseek.com/api_keys", C.dim);
-    pushLine("", C.dim);
+    pushLine("", "dim");
+    pushLine("", "dim");
+    pushLine("", "dim");
+    pushLine("Welcome to JuneCoder!", "labelAssistant");
+    pushLine("Before you start, you need a DeepSeek API key.", "text");
+    pushLine("Get one at: https://platform.deepseek.com/api_keys", "dim");
+    pushLine("", "dim");
     state.status = "Paste your DeepSeek API key and press Enter";
   }
 
@@ -424,7 +437,7 @@ export async function startTUI(agent, opts = {}) {
       const resolve = state.permission.resolve;
       state.permission = null; state.permissionPreview = [];
       state.status = state.processing ? "Processing..." : "Ready";
-      pushLine("  [denied] " + (reason || "(no reason)"), C.warn);
+      pushLine("  [denied] " + (reason || "(no reason)"), "warn");
       resolve({ allowed: false, reason: reason || undefined });
       render(); return;
     }
@@ -446,12 +459,12 @@ export async function startTUI(agent, opts = {}) {
         if (agent.provider.apiKey) {
           // Already have a key — user is just changing their mind
           setupMode = false;
-          pushLine("Key unchanged.", C.dim);
+          pushLine("Key unchanged.", "dim");
           state.status = "Ready";
           render();
           return;
         }
-        pushLine("No API key provided. Exiting.", C.error);
+        pushLine("No API key provided. Exiting.", "error");
         render();
         await new Promise(r => setTimeout(r, 1500));
         cleanup();
@@ -459,8 +472,8 @@ export async function startTUI(agent, opts = {}) {
       }
 
       if (!trimmed.startsWith("sk-")) {
-        pushLine("Invalid key — DeepSeek API keys must start with 'sk-'. Try again:", C.error);
-        pushLine("", C.dim);
+        pushLine("Invalid key — DeepSeek API keys must start with 'sk-'. Try again:", "error");
+        pushLine("", "dim");
         setupMode = true;
         state.status = "Paste your DeepSeek API key and press Enter";
         render();
@@ -471,8 +484,8 @@ export async function startTUI(agent, opts = {}) {
       saveApiKey('deepseek', trimmed);
       agent.provider.apiKey = trimmed;
 
-      pushLine("API key saved to ~/.junecoder/config.json", C.tool);
-      pushLine("", C.dim);
+      pushLine("API key saved to ~/.junecoder/config.json", "tool");
+      pushLine("", "dim");
       setupMode = false;
       state.status = "Ready";
       render();
@@ -492,7 +505,7 @@ export async function startTUI(agent, opts = {}) {
         resolve: async (answer) => {
           if (answer.startsWith("Yes")) {
             agent.autoApprove = true;
-            pushLine("  [auto] Auto-approve ON for goal mode.", C.warn);
+            pushLine("  [auto] Auto-approve ON for goal mode.", "warn");
           }
           const goalTurns = agent.config?.agent?.goalTurns || 200;
           agent.goal = {
@@ -516,39 +529,39 @@ export async function startTUI(agent, opts = {}) {
 
   async function doRun(text) {
     const isGoal = agent.goal?.status === 'active';
-    pushLabel(isGoal ? "\u276f Goal:" : "\u276f You:", ansi.bold + (isGoal ? C.tool : C.user));
+    pushLabel(isGoal ? "\u276f Goal:" : "\u276f You:", isGoal ? "labelGoal" : "labelUser");
     const pasteLines = text.split("\n").length;
     if (pasteLines <= PASTE_TRUNCATE_LINES) {
-      pushLine(text, C.text);
+      pushLine(text, "text");
     } else {
       const preview = text.split("\n").slice(0, PASTE_PREVIEW_LINES).join("\n");
-      pushLine(preview + `\n\u2026 (${pasteLines} lines total)`, pasteYellow);
+      pushLine(preview + `\n\u2026 (${pasteLines} lines total)`, "paste");
     }
     assistantLabeled = false; state.processing = true; state.status = "Processing...";
     state.streaming = ""; state.reasoning = ""; state.currentTool = null; state.toolStreams = {}; state.subOutput = "";
     state.processingStarted = Date.now(); state.controller = new AbortController();
     const ticker = setInterval(() => { if (state.processing) render(); }, 1000); render();
     const callbacks = {
-      onToken: t => { ensureAssistantLabel(); if (!state.streaming && state.reasoning) { pushLine(state.reasoning, C.reason); state.reasoning = ''; } state.streaming += t; scheduleRender(); },
-      onReasoning: t => { ensureAssistantLabel(); if (state.streaming) { pushLine(state.streaming, C.text); state.streaming = ''; } state.reasoning += t; scheduleRender(); },
-      onToolCall: (name, args) => { flushStream(); ensureAssistantLabel(); state.currentTool = name; const summary = summarize(args); pushLine("  [tool] " + name + (summary && summary !== '{}' ? " " + summary : ""), C.tool); },
-      onToolResult: (name, output, error) => { state.currentTool = null; const text = error ? "Error: " + error : (output || ""); const stream = state.toolStreams[name]; if (stream) { const tail = stream.trimEnd().slice(-4000); if (tail) pushLine(tail, C.dim); delete state.toolStreams[name]; } pushLine("  [done] " + name + " \u2192 " + sliceByWidth(sanitizeDisplay(text.split("\n")[0]), 100), C.dim); },
+      onToken: t => { ensureAssistantLabel(); if (!state.streaming && state.reasoning) { pushLine(state.reasoning, "reason"); state.reasoning = ''; } state.streaming += t; scheduleRender(); },
+      onReasoning: t => { ensureAssistantLabel(); if (state.streaming) { pushLine(state.streaming, "text"); state.streaming = ''; } state.reasoning += t; scheduleRender(); },
+      onToolCall: (name, args) => { flushStream(); ensureAssistantLabel(); state.currentTool = name; const summary = summarize(args); pushLine("  [tool] " + name + (summary && summary !== '{}' ? " " + summary : ""), "tool"); },
+      onToolResult: (name, output, error) => { state.currentTool = null; const text = error ? "Error: " + error : (output || ""); const stream = state.toolStreams[name]; if (stream) { const tail = stream.trimEnd().slice(-4000); if (tail) pushLine(tail, "dim"); delete state.toolStreams[name]; } pushLine("  [done] " + name + " \u2192 " + sliceByWidth(sanitizeDisplay(text.split("\n")[0]), 100), "dim"); },
       onToolOutput: (name, output, error) => { state.toolStreams[name] = (state.toolStreams[name] ?? "") + (error ? "Error: " + error : (output || "")); scheduleRender(); },
       onPermissionRequest: (tool, args) => askPermission(tool.name || tool, args),
       onQuestion: async (q) => askQuestion(q),
-      onCompress: (type) => pushLine(type === 'llm' ? "  [context] Summarized via LLM" : "  [context] Compressed (history truncated)", C.warn),
-      onSystem: (type, msg) => { flushStream(); pushLine(`  [${type}] ${msg}`, C.dim); },
+      onCompress: (type) => pushLine(type === 'llm' ? "  [context] Summarized via LLM" : "  [context] Compressed (history truncated)", "warn"),
+      onSystem: (type, msg) => { flushStream(); pushLine(`  [${type}] ${msg}`, "dim"); },
       onGoalProgress: (objective, turn, max) => { state.goal = { objective, turn, max }; render(); },
       onUsage: u => { state.tokens.prompt = u.prompt_tokens ?? 0; state.tokens.completion = u.completion_tokens ?? 0; state.tokens.total = u.total_tokens ?? 0; state.tokens.cacheHit = u.prompt_cache_hit_tokens ?? u.prompt_tokens_details?.cached_tokens ?? 0; state.tokens.cacheMiss = u.prompt_cache_miss_tokens ?? 0; state.tokens.totalPrompt += u.prompt_tokens ?? 0; state.tokens.totalCompletion += u.completion_tokens ?? 0; state.tokens.totalTotal += u.total_tokens ?? 0; agent._lastTotalTokens = u.total_tokens ?? 0; },
-      onTaskUpdate: items => { state.tasks = items || []; const done = items.filter(i => i.status === "done").length; const cur = items.find(i => i.status === "in_progress"); pushLine("  [task] " + done + "/" + items.length + (cur ? " \u25b6 " + cur.title : ""), C.dim); render(); },
+      onTaskUpdate: items => { state.tasks = items || []; const done = items.filter(i => i.status === "done").length; const cur = items.find(i => i.status === "in_progress"); pushLine("  [task] " + done + "/" + items.length + (cur ? " \u25b6 " + cur.title : ""), "dim"); render(); },
       onTurnEnd: (() => { let n = 0; return () => { if (++n % 5 === 0) { try { saveSession(agent, state.lines); } catch { /* autosave best-effort — must not interrupt the loop */ } } }; })(),
     };
     for (let resume = false; ; resume = true) {
       try { await runAgent(agent, text, callbacks, { signal: state.controller.signal, resume }); flushStream(); break; }
       catch (error) { flushStream();
-        if (error.name === "AbortError" || state.controller?.signal.aborted) { pushLine("[Aborted]", C.warn); break; }
-        if (error instanceof ContinueError) { pushLabel("\u276f Continue", ansi.bold + C.warn); pushLine("Ran " + error.turn + " turns (limit " + error.turn + "). Continue?", C.warn); const willContinue = await new Promise(resolve => { state.permission = { name: "continue", args: { turns: error.turn }, resolve, reasonMode: false }; state.status = "Continue after " + error.turn + " turns?"; render(); }); state.permission = null; state.permissionPreview = []; if (!willContinue.allowed) { pushLine("[Cancelled]", C.warn); break; } pushLine("[Continuing\u2026]", C.tool); state.controller = new AbortController(); continue; }
-        pushLine("[error] " + error.message, C.error); break;
+        if (error.name === "AbortError" || state.controller?.signal.aborted) { pushLine("[Aborted]", "warn"); break; }
+        if (error instanceof ContinueError) { pushLabel("\u276f Continue", "labelWarn"); pushLine("Ran " + error.turn + " turns (limit " + error.turn + "). Continue?", "warn"); const willContinue = await new Promise(resolve => { state.permission = { name: "continue", args: { turns: error.turn }, resolve, reasonMode: false }; state.status = "Continue after " + error.turn + " turns?"; render(); }); state.permission = null; state.permissionPreview = []; if (!willContinue.allowed) { pushLine("[Cancelled]", "warn"); break; } pushLine("[Continuing\u2026]", "tool"); state.controller = new AbortController(); continue; }
+        pushLine("[error] " + error.message, "error"); break;
       }
     }
     clearInterval(ticker); state.processing = false; state.controller = null; state.status = "Ready";
@@ -557,21 +570,21 @@ export async function startTUI(agent, opts = {}) {
     try { saveSession(agent, state.lines); } catch { /* final save best-effort — render must run regardless */ } render();
   }
 
-  function flushStream() { if (state.reasoning) { pushLine(state.reasoning, C.reason); state.reasoning = ""; } if (state.streaming) { pushLine(state.streaming, C.text); state.streaming = ""; } }
-  function askPermission(name, args) { if (agent.autoApprove) { pushLine("  [auto] " + name + " " + summarize(args), C.warn); return Promise.resolve({ allowed: true }); } state.permissionPreview = formatPermission(name, args); return new Promise(resolve => { state.permission = { name, args, resolve, reasonMode: false }; state.status = "Waiting: " + name; render(); }); }
-  function askQuestion(text) { if (state.question) return Promise.resolve("(already waiting)"); pushLabel("\u276f Question", ansi.bold + C.tool); for (const line of text.split("\n")) pushLine("  " + line, C.text); return new Promise(resolve => { state.question = { text, options: [], resolve }; state.status = "Waiting..."; render(); }); }
+  function flushStream() { if (state.reasoning) { pushLine(state.reasoning, "reason"); state.reasoning = ""; } if (state.streaming) { pushLine(state.streaming, "text"); state.streaming = ""; } }
+  function askPermission(name, args) { if (agent.autoApprove) { pushLine("  [auto] " + name + " " + summarize(args), "warn"); return Promise.resolve({ allowed: true }); } state.permissionPreview = formatPermission(name, args); return new Promise(resolve => { state.permission = { name, args, resolve, reasonMode: false }; state.status = "Waiting: " + name; render(); }); }
+  function askQuestion(text) { if (state.question) return Promise.resolve("(already waiting)"); pushLabel("\u276f Question", "labelTool"); for (const line of text.split("\n")) pushLine("  " + line, "text"); return new Promise(resolve => { state.question = { text, options: [], resolve }; state.status = "Waiting..."; render(); }); }
 
   async function handleSlash(text) {
     const cmd = text.slice(1).split(/\s+/)[0].toLowerCase();
     switch (cmd) {
-      case "help": for (const l of ["/help /goal /plan /auto /key /model /sessions /clear /tasks /stats /new /quit"]) pushLine(l, C.dim); break;
+      case "help": for (const l of ["/help /goal /plan /auto /key /model /sessions /clear /tasks /stats /new /quit"]) pushLine(l, "dim"); break;
       case "goal": state.goalMode = true; state.status = "Define your goal and press Enter"; render(); break;
-      case "plan": agent.planMode = !agent.planMode; pushLine("  Plan mode " + (agent.planMode ? "ON" : "OFF"), C.tool); break;
-      case "auto": agent.autoApprove = !agent.autoApprove; pushLine("  Auto-approve " + (agent.autoApprove ? "ON" : "OFF"), agent.autoApprove ? C.warn : C.tool); break;
+      case "plan": agent.planMode = !agent.planMode; pushLine("  Plan mode " + (agent.planMode ? "ON" : "OFF"), "tool"); break;
+      case "auto": agent.autoApprove = !agent.autoApprove; pushLine("  Auto-approve " + (agent.autoApprove ? "ON" : "OFF"), agent.autoApprove ? "warn" : "tool"); break;
       case "model": {
         const { getProviderModels } = await import('./provider.mjs');
         const models = getProviderModels(agent.provider.type || 'deepseek');
-        if (models.length === 0) { pushLine("No models for this provider.", C.dim); break; }
+        if (models.length === 0) { pushLine("No models for this provider.", "dim"); break; }
         const current = agent.provider.model;
         const options = models.map(m => m === current ? m + " (current)" : m);
         options.push("Cancel");
@@ -579,13 +592,13 @@ export async function startTUI(agent, opts = {}) {
           text: "Select model: (arrow keys, Enter to confirm)",
           options,
           resolve: async (answer) => {
-            if (answer === "Cancel" || !answer) { pushLine("Cancelled.", C.dim); state.status = "Ready"; render(); return; }
+            if (answer === "Cancel" || !answer) { pushLine("Cancelled.", "dim"); state.status = "Ready"; render(); return; }
             const model = answer.replace(" (current)", "");
-            if (!models.includes(model)) { pushLine("Invalid model.", C.error); state.status = "Ready"; render(); return; }
+            if (!models.includes(model)) { pushLine("Invalid model.", "error"); state.status = "Ready"; render(); return; }
             const { saveModel } = await import('./config-provider.mjs');
             saveModel(agent.provider.type || agent.provider.name || 'deepseek', model);
             agent.provider.model = model;
-            pushLine("Model switched to " + model, C.tool);
+            pushLine("Model switched to " + model, "tool");
             state.status = "Ready";
             render();
           }
@@ -595,15 +608,15 @@ export async function startTUI(agent, opts = {}) {
         break;
       }
       case "key": {
-        pushLine("  Current key: " + (agent.provider.apiKey ? agent.provider.apiKey.slice(0, 8) + "..." : "(none)"), C.dim);
-        pushLine("  Paste a new key.", C.tool);
+        pushLine("  Current key: " + (agent.provider.apiKey ? agent.provider.apiKey.slice(0, 8) + "..." : "(none)"), "dim");
+        pushLine("  Paste a new key.", "tool");
         setupMode = true;
         state.status = "Paste your DeepSeek API key and press Enter";
         break;
       }
       case "sessions": case "session": {
         const slots = listSlots(agent.cwd);
-        if (slots.length === 0) { pushLine("No saved sessions.", C.dim); break; }
+        if (slots.length === 0) { pushLine("No saved sessions.", "dim"); break; }
         // Build options: each slot + "Cancel"
         const options = slots.map(s => "Switch to " + s.label);
         options.push("Cancel");
@@ -611,25 +624,24 @@ export async function startTUI(agent, opts = {}) {
           text: "Switch to which session? (arrow keys to select, Enter to confirm)",
           options,
           resolve: (answer) => {
-            if (answer === "Cancel" || !answer) { pushLine("Cancelled.", C.dim); state.status = "Ready"; render(); return; }
+            if (answer === "Cancel" || !answer) { pushLine("Cancelled.", "dim"); state.status = "Ready"; render(); return; }
             const idx = options.indexOf(answer);
-            if (idx < 0 || idx >= slots.length) { pushLine("Invalid selection.", C.error); state.status = "Ready"; render(); return; }
+            if (idx < 0 || idx >= slots.length) { pushLine("Invalid selection.", "error"); state.status = "Ready"; render(); return; }
             const slot = slots[idx];
             const data = switchToSlot(agent.cwd, slot.file);
-            if (!data) { pushLine("Failed to switch session.", C.error); state.status = "Ready"; render(); return; }
+            if (!data) { pushLine("Failed to switch session.", "error"); state.status = "Ready"; render(); return; }
             // Restore the session
             agent.history = data.history || [];
             state.lines = [];
             if (data.displayLines) {
               for (const raw of data.displayLines) {
-                if (typeof raw === "string") state.lines.push({ text: raw, color: C.text });
-                else if (raw && typeof raw.text === "string") state.lines.push(raw);
+                state.lines.push({ text: String(raw.text ?? ""), role: raw.role || "text" });
               }
             }
             if (data.goal) agent.goal = data.goal;
             if (data.tasks) { agent.tasks = data.tasks; state.tasks = data.tasks; }
             if (data.planMode !== undefined) agent.planMode = data.planMode;
-            pushLine("Switched to " + slot.label, C.tool);
+            pushLine("Switched to " + slot.label, "tool");
             state.status = "Ready";
             render();
           }
@@ -638,12 +650,12 @@ export async function startTUI(agent, opts = {}) {
         render();
         break;
       }
-      case "clear": archiveCurrent(agent.cwd); agent.history = []; state.lines = []; state.streaming = ""; state.reasoning = ""; state.tasks = []; agent.tasks = []; agent.goal = null; state.goal = null; state.scroll = 0; pushLine("Cleared (archived).", C.warn); break;
-      case "new": archiveCurrent(agent.cwd); agent.history = []; state.lines = []; state.streaming = ""; state.reasoning = ""; state.toolStreams = {}; state.tasks = []; agent.tasks = []; agent.goal = null; state.goal = null; state.scroll = 0; state.tokens = { prompt: 0, completion: 0, total: 0, cacheHit: 0, cacheMiss: 0, totalPrompt: 0, totalCompletion: 0, totalTotal: 0 }; delete agent._lastTotalTokens; pushLine("New session.", C.tool); break;
-      case "tasks": if (state.tasks.length === 0) pushLine("No tasks.", C.dim); else for (const t of state.tasks) pushLine("  " + (t.status === "done" ? "\u2713" : t.status === "in_progress" ? "\u25b6" : "\u25cb") + " " + t.title, C.dim); break;
-      case "stats": pushLine("Last call: \u2191" + fmtK(state.tokens.prompt) + " \u2193" + fmtK(state.tokens.completion) + " | Session total: \u2191" + fmtK(state.tokens.totalPrompt) + " \u2193" + fmtK(state.tokens.totalCompletion) + " \u2211" + fmtK(state.tokens.totalTotal) + " | History: " + agent.history.length + " msgs" + (agent._lastTotalTokens ? " (" + fmtK(agent._lastTotalTokens) + " t)" : "") + " | Lines: " + state.lines.length, C.dim); break;
+      case "clear": archiveCurrent(agent.cwd); agent.history = []; state.lines = []; state.streaming = ""; state.reasoning = ""; state.tasks = []; agent.tasks = []; agent.goal = null; state.goal = null; state.scroll = 0; pushLine("Cleared (archived).", "warn"); break;
+      case "new": archiveCurrent(agent.cwd); agent.history = []; state.lines = []; state.streaming = ""; state.reasoning = ""; state.toolStreams = {}; state.tasks = []; agent.tasks = []; agent.goal = null; state.goal = null; state.scroll = 0; state.tokens = { prompt: 0, completion: 0, total: 0, cacheHit: 0, cacheMiss: 0, totalPrompt: 0, totalCompletion: 0, totalTotal: 0 }; delete agent._lastTotalTokens; pushLine("New session.", "tool"); break;
+      case "tasks": if (state.tasks.length === 0) pushLine("No tasks.", "dim"); else for (const t of state.tasks) pushLine("  " + (t.status === "done" ? "\u2713" : t.status === "in_progress" ? "\u25b6" : "\u25cb") + " " + t.title, "dim"); break;
+      case "stats": pushLine("Last call: \u2191" + fmtK(state.tokens.prompt) + " \u2193" + fmtK(state.tokens.completion) + " | Session total: \u2191" + fmtK(state.tokens.totalPrompt) + " \u2193" + fmtK(state.tokens.totalCompletion) + " \u2211" + fmtK(state.tokens.totalTotal) + " | History: " + agent.history.length + " msgs" + (agent._lastTotalTokens ? " (" + fmtK(agent._lastTotalTokens) + " t)" : "") + " | Lines: " + state.lines.length, "dim"); break;
       case "quit": case "exit": cleanup(); process.exit(0); return;
-      default: pushLine("Unknown: /" + cmd + " (try /help)", C.error);
+      default: pushLine("Unknown: /" + cmd + " (try /help)", "error");
     }
     render();
   }
@@ -651,8 +663,7 @@ export async function startTUI(agent, opts = {}) {
   const restored = opts.restored;
   if (restored && restored.displayLines) {
     for (const raw of restored.displayLines) {
-      if (typeof raw === "string") state.lines.push({ text: raw, color: C.text });
-      else if (raw && typeof raw.text === "string") state.lines.push(raw);
+      state.lines.push({ text: String(raw.text ?? ""), role: raw.role || "text" });
     }
     if (restored.history) agent.history = restored.history;
     if (restored.goal) agent.goal = restored.goal;
@@ -660,10 +671,10 @@ export async function startTUI(agent, opts = {}) {
     if (restored.planMode !== undefined) agent.planMode = restored.planMode;
     state.status = "Session restored";
   } else if (!setupMode) {
-    pushLine("", C.dim);
-    pushLine("JuneCoder TUI \u2014 " + (agent.provider.model || ""), ansi.bold + C.tool);
-    pushLine("Type /help for commands, Ctrl+C to quit.", C.dim);
-    pushLine("", C.dim);
+    pushLine("", "dim");
+    pushLine("JuneCoder TUI \u2014 " + (agent.provider.model || ""), "labelTool");
+    pushLine("Type /help for commands, Ctrl+C to quit.", "dim");
+    pushLine("", "dim");
   }
   render();
 }

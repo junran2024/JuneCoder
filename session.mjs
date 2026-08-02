@@ -24,17 +24,50 @@ function stripAnsi(s) {
 }
 
 /**
- * Normalize display lines to plain text. Lines may arrive as
- * { text, color } (TUI render state) or plain strings; sessions are
- * persisted for restoration after a restart, so only the text is kept —
- * color codes are terminal-only noise and must not land in the file.
+ * Best-effort role guess for lines that carry no role info (files saved
+ * by older versions as plain strings). Colors are code-side; we only
+ * re-derive the semantic role from the line's shape, never store ANSI.
  */
-export function plainLines(lines) {
+function guessRole(text) {
+  if (text === "") return "dim";
+  if (text.startsWith("\u276f JuneCoder:")) return "labelAssistant";
+  if (text.startsWith("\u276f You:")) return "labelUser";
+  if (text.startsWith("\u276f Goal:")) return "labelGoal";
+  if (text.startsWith("\u276f Question:")) return "labelTool";
+  if (text.startsWith("\u276f Continue")) return "labelWarn";
+  if (text.startsWith("  [error]") || text.startsWith("Invalid ") || text.startsWith("Failed to ") || text.startsWith("Unknown: /")) return "error";
+  if (text.startsWith("  [tool]")) return "tool";
+  if (text.startsWith("  [auto]") || text.startsWith("  [denied]") || text.startsWith("  [context]") ||
+      text.startsWith("[Cancelled]") || text.startsWith("Cleared ") ||
+      (text.startsWith("Ran ") && /turn/.test(text)) || text.includes("lines total")) return "warn";
+  if (text.startsWith("  [done]") || text.startsWith("  [system]") || text.startsWith("  [task]") ||
+      text.startsWith("  Current key:") || text.startsWith("Get one at:") || text.startsWith("Type /help") ||
+      text.startsWith("Last call:") || text.startsWith("/help ") || text === "No saved sessions.") return "dim";
+  if (text.startsWith("API key saved") || text.startsWith("Plan mode ") || text.startsWith("Model switched") ||
+      text.startsWith("New session.") || text.startsWith("Switched to ") || text.startsWith("  Paste a new key") ||
+      text.startsWith("[Continuing")) return "tool";
+  if (text.startsWith("Welcome to JuneCoder!")) return "labelAssistant";
+  return "text";
+}
+
+/**
+ * Normalize display lines to the canonical persisted shape { text, role }.
+ * role is a semantic name (user, assistant, dim, error, …) resolved to an
+ * ANSI color by the TUI's code-side table at render time — raw color codes
+ * are terminal-only noise and must never land in the session file.
+ *
+ * Accepts strings and legacy { text, color } objects (role is guessed from
+ * the text); any ANSI escapes inside text are stripped.
+ */
+export function normalizeLines(lines) {
   if (!Array.isArray(lines)) return [];
   const out = [];
   for (const l of lines) {
-    if (typeof l === "string") out.push(stripAnsi(l));
-    else if (l && typeof l.text === "string") out.push(stripAnsi(l.text));
+    if (typeof l === "string") out.push({ text: stripAnsi(l), role: guessRole(l) });
+    else if (l && typeof l.text === "string") {
+      const text = stripAnsi(l.text);
+      out.push({ text, role: typeof l.role === "string" ? l.role : guessRole(text) });
+    }
   }
   return out;
 }
@@ -55,7 +88,7 @@ export function saveSession(agent, displayLines) {
     const data = {
       cwd: agent.cwd,
       history: agent.history,
-      displayLines: plainLines(displayLines),
+      displayLines: normalizeLines(displayLines),
       planMode: agent.planMode,
       goal: agent.goal,
       tasks: agent.tasks,
@@ -75,7 +108,7 @@ export function loadSession(cwd) {
   try {
     const raw = readFileSync(path, 'utf-8');
     const data = JSON.parse(raw);
-    if (Array.isArray(data.displayLines)) data.displayLines = plainLines(data.displayLines);
+    if (Array.isArray(data.displayLines)) data.displayLines = normalizeLines(data.displayLines);
     return data;
   } catch {
     return null;
@@ -128,7 +161,7 @@ export function switchToSlot(cwd, slot) {
     if (!existsSync(src)) return null;
     const raw = readFileSync(src, 'utf-8');
     const data = JSON.parse(raw);
-    if (Array.isArray(data.displayLines)) data.displayLines = plainLines(data.displayLines);
+    if (Array.isArray(data.displayLines)) data.displayLines = normalizeLines(data.displayLines);
     // Save current session first
     const curPath = sessionPath(cwd);
     if (existsSync(curPath)) {

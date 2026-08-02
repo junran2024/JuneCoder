@@ -57,7 +57,11 @@ describe('saveSession + loadSession', () => {
     const dir = getDir();
     const agent = freshAgent(dir);
     agent.goal = { objective: 'finish', criteria: 'tests pass' };
-    const displayLines = ['line1', 'line2'];
+    const displayLines = [
+      { text: '❯ You:', role: 'labelUser' },
+      { text: 'hello', role: 'text' },
+      { text: '', role: 'dim' },
+    ];
 
     saveSession(agent, displayLines);
     const restored = loadSession(dir);
@@ -81,25 +85,56 @@ describe('saveSession + loadSession', () => {
     assert.strictEqual(restored.goal, null);
   });
 
-  it('strips color codes from display lines before saving', () => {
+  it('persists roles but never ANSI color codes', () => {
     const dir = getDir();
     const agent = freshAgent(dir);
     const displayLines = [
-      { text: 'hello', color: '\x1b[1m\x1b[38;2;246;168;36m' },
-      { text: '', color: '\x1b[90m' },
-      'plain \x1b[31mred\x1b[0m text',
+      { text: '❯ JuneCoder:', role: 'labelAssistant' },
+      { text: 'hello', role: 'text' },
+      { text: '', role: 'dim' },
+      { text: '  [tool] bash ls', role: 'tool' },
     ];
 
     saveSession(agent, displayLines);
     const restored = loadSession(dir);
 
-    assert.deepStrictEqual(restored.displayLines, ['hello', '', 'plain red text']);
+    // Roles survive the roundtrip untouched
+    assert.deepStrictEqual(restored.displayLines, displayLines);
     // The file itself must not contain any escape sequences
     const raw = JSON.stringify(restored);
     assert.ok(!raw.includes('\x1b'), 'session file must not contain ANSI escapes');
   });
 
-  it('cleans color codes from legacy files on load', () => {
+  it('strips ANSI from text and guesses roles for legacy plain-string lines', () => {
+    const dir = getDir();
+    const agent = freshAgent(dir);
+    const displayLines = [
+      'plain \x1b[31mred\x1b[0m text',
+      '',
+      '❯ JuneCoder: hello',
+      '❯ You:',
+      '  [tool] bash pwd',
+      '  [done] bash → ok',
+      '  [error] boom',
+      'Ran 3 turns (limit 3). Continue?',
+    ];
+
+    saveSession(agent, displayLines);
+    const restored = loadSession(dir);
+
+    assert.deepStrictEqual(restored.displayLines, [
+      { text: 'plain red text', role: 'text' },
+      { text: '', role: 'dim' },
+      { text: '❯ JuneCoder: hello', role: 'labelAssistant' },
+      { text: '❯ You:', role: 'labelUser' },
+      { text: '  [tool] bash pwd', role: 'tool' },
+      { text: '  [done] bash → ok', role: 'dim' },
+      { text: '  [error] boom', role: 'error' },
+      { text: 'Ran 3 turns (limit 3). Continue?', role: 'warn' },
+    ]);
+  });
+
+  it('cleans legacy { text, color } files on load without keeping color', () => {
     const dir = getDir();
     const agent = freshAgent(dir);
     // Simulate a file saved by an older version: { text, color } objects with escapes
@@ -115,7 +150,7 @@ describe('saveSession + loadSession', () => {
     writeFileSync(sessionPath(dir), JSON.stringify(legacy), 'utf-8');
 
     const restored = loadSession(dir);
-    assert.deepStrictEqual(restored.displayLines, ['legacy']);
+    assert.deepStrictEqual(restored.displayLines, [{ text: 'legacy', role: 'text' }]);
   });
 });
 
