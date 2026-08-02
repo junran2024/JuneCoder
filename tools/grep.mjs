@@ -27,8 +27,9 @@ export const grepTool = {
     properties: {
       pattern: { type: 'string', description: 'JavaScript regular expression (e.g. "foo|bar", "\\d+", "const \\w+ =")' },
       path: { type: 'string', description: 'Directory or file to search (default cwd)' },
-      glob: { type: 'string', description: "Only search files matching this glob (e.g. '*.mjs', '**/*.test.mjs'). Without '/', matched against the file name; with '/', matched against the full relative path." },
+      glob: { type: 'string', description: "Only search files matching this glob (e.g. '*.mjs', '**/*.test.mjs', '*.[jt]s', '*.{js,mjs}'). Without '/', matched against the file name; with '/', matched against the full relative path." },
       caseInsensitive: { type: 'boolean', description: 'Match case-insensitively (equivalent to the JS /i flag). Default false.' },
+      unicode: { type: 'boolean', description: 'Compile with the JS /u flag — enables \\p{...} Unicode property escapes (e.g. "\\p{Script=Han}"). Default false.' },
     },
     required: ['pattern'],
   },
@@ -43,6 +44,7 @@ export const grepTool = {
     // not silently swallowed like the old shell version did.
     let flags = '';
     if (args.caseInsensitive) flags += 'i';
+    if (args.unicode) flags += 'u';
     let regex;
     try {
       regex = new RegExp(args.pattern, flags);
@@ -180,19 +182,54 @@ function makeFileMatcher(pattern) {
     : (_relPath, name) => regex.test(name);
 }
 
-/** Convert a glob to an anchored RegExp: '**' + '/' = zero-or-more dirs, '**' = across dirs, '*' = within a segment, '?' = single char. */
+/**
+ * Convert a glob to an anchored RegExp:
+ * '**' + '/' = zero-or-more dirs, '**' = across dirs, '*' = within a segment,
+ * '?' = one char, '[a-z]' / '[!a-z]' = character class, '{a,b}' = alternation.
+ */
 function globToRegex(pattern) {
-  const DS = '\u0001';
-  const DP = '\u0002';
-  const escaped = pattern
-    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*\*\//g, DS)
-    .replace(/\*\*/g, DP)
-    .replace(/\*/g, '[^/]*')
-    .replace(/\?/g, '[^/]')
-    .replaceAll(DS, '(?:.*/)?')
-    .replaceAll(DP, '.*');
-  return new RegExp('^' + escaped + '$');
+  let out = '^';
+  for (let i = 0; i < pattern.length; i++) {
+    const c = pattern[i];
+    if (c === '*') {
+      if (pattern[i + 1] === '*') {
+        out += pattern[i + 2] === '/' ? '(?:.*/)?' : '.*';
+        i += pattern[i + 2] === '/' ? 2 : 1;
+      } else {
+        out += '[^/]*';
+      }
+    } else if (c === '?') {
+      out += '[^/]';
+    } else if (c === '[') {
+      const close = pattern.indexOf(']', i + 1);
+      if (close === -1) {
+        out += '\\['; // unterminated class: treat '[' as a literal
+        continue;
+      }
+      let cls = pattern.slice(i + 1, close);
+      if (cls.startsWith('!') || cls.startsWith('^')) cls = '^' + cls.slice(1);
+      if (cls === '' || cls === '^') {
+        out += '\\[\\]'; // empty class: treat as a literal
+      } else {
+        out += '[' + cls + ']';
+      }
+      i = close;
+    } else if (c === '{') {
+      const close = pattern.indexOf('}', i + 1);
+      const inner = close !== -1 ? pattern.slice(i + 1, close) : '';
+      if (close !== -1 && inner.includes(',')) {
+        out += '(?:' + inner.split(',').join('|') + ')';
+        i = close;
+      } else {
+        out += '\\{';
+      }
+    } else if (!/[A-Za-z0-9_/-]/.test(c)) {
+      out += '\\' + c;
+    } else {
+      out += c;
+    }
+  }
+  return new RegExp(out + String.fromCharCode(36));
 }
 
 /** Path for display: './foo/bar.mjs' when under cwd, otherwise the absolute path. */

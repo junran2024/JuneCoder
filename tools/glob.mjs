@@ -11,11 +11,11 @@ const IGNORED_DIRS = new Set([
 export const globTool = {
   name: 'glob',
   description:
-    'Find files by glob pattern. Returns matching paths. Supports ** for recursive matching.',
+    'Find files by glob pattern. Returns matching paths. Supports **, *, ?, [a-z] character classes, and {a,b} alternation.',
   parameters: {
     type: 'object',
     properties: {
-      pattern: { type: 'string', description: 'Glob pattern — supports **, *, ?, and character classes' },
+      pattern: { type: 'string', description: 'Glob pattern — supports **, *, ?, [a-z] classes, and {a,b} alternation (e.g. "**/*.{js,mjs}", "*.[jt]s")' },
       path: { type: 'string', description: 'Directory to search in (default cwd)' },
     },
     required: ['pattern'],
@@ -67,17 +67,53 @@ function* walkFilesSync(dir, rel = '') {
   }
 }
 
-/** Convert a glob pattern to a RegExp: **\/ matches zero-or-more dirs, ** matches across dirs, * matches within a segment, ? matches a single char. */
+/**
+ * Convert a glob to an anchored RegExp:
+ * '**' + '/' = zero-or-more dirs, '**' = across dirs, '*' = within a segment,
+ * '?' = one char, '[a-z]' / '[!a-z]' = character class, '{a,b}' = alternation.
+ */
 function globToRegex(pattern) {
-  const DS = '\u0001'; // placeholder for **/
-  const DP = '\u0002'; // placeholder for **
-  const escaped = pattern
-    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*\*\//g, DS)
-    .replace(/\*\*/g, DP)
-    .replace(/\*/g, '[^/]*')
-    .replace(/\?/g, '[^/]')
-    .replaceAll(DS, '(?:.*/)?')
-    .replaceAll(DP, '.*');
-  return new RegExp('^' + escaped + '$');
+  const SAFE = /[A-Za-z0-9_/-]/; // chars that need no escaping in the regex
+  let out = '^';
+  for (let i = 0; i < pattern.length; i++) {
+    const c = pattern[i];
+    if (c === '*') {
+      if (pattern[i + 1] === '*') {
+        out += pattern[i + 2] === '/' ? '(?:.*/)?' : '.*';
+        i += pattern[i + 2] === '/' ? 2 : 1;
+      } else {
+        out += '[^/]*';
+      }
+    } else if (c === '?') {
+      out += '[^/]';
+    } else if (c === '[') {
+      const close = pattern.indexOf(']', i + 1);
+      if (close === -1) {
+        out += '\\['; // unterminated class: treat '[' as a literal
+        continue;
+      }
+      let cls = pattern.slice(i + 1, close);
+      if (cls.startsWith('!') || cls.startsWith('^')) cls = '^' + cls.slice(1);
+      if (cls === '' || cls === '^') {
+        out += '\\[\\]'; // empty class: treat as a literal
+      } else {
+        out += '[' + cls + ']';
+      }
+      i = close;
+    } else if (c === '{') {
+      const close = pattern.indexOf('}', i + 1);
+      const inner = close !== -1 ? pattern.slice(i + 1, close) : '';
+      if (close !== -1 && inner.includes(',')) {
+        out += '(?:' + inner.split(',').join('|') + ')';
+        i = close;
+      } else {
+        out += '\\{';
+      }
+    } else if (!SAFE.test(c)) {
+      out += '\\' + c;
+    } else {
+      out += c;
+    }
+  }
+  return new RegExp(out + String.fromCharCode(36));
 }

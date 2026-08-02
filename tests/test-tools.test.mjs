@@ -314,6 +314,18 @@ describe('globTool', () => {
     assert.ok(out.includes('good.js'));
     assert.ok(!out.includes('node_modules'));
   });
+
+  it('supports character classes and brace alternation', async () => {
+    const dir = getDir();
+    writeFileSync(join(dir, 'a.js'), '');
+    writeFileSync(join(dir, 'b.ts'), '');
+    writeFileSync(join(dir, 'c.mjs'), '');
+    const agent = freshAgent(dir);
+    const cls = await globTool.execute({ pattern: '*.[jt]s' }, agent);
+    assert.ok(cls.includes('a.js') && cls.includes('b.ts') && !cls.includes('c.mjs'));
+    const braces = await globTool.execute({ pattern: '*.{js,mjs}' }, agent);
+    assert.ok(braces.includes('a.js') && braces.includes('c.mjs') && !braces.includes('b.ts'));
+  });
 });
 
 // ─── grepTool ────────────────────────────────────────────────────────────────
@@ -391,6 +403,52 @@ describe('grepTool', () => {
     const out = await grepTool.execute({ pattern: 'foo', glob: '**/a.mjs' }, agent);
     assert.ok(out.includes('src/a.mjs'));
     assert.ok(!out.includes('b.mjs'));
+  });
+
+  it('glob supports character classes like *.[jt]s', async () => {
+    const dir = getDir();
+    writeFileSync(join(dir, 'a.js'), 'foo\n');
+    writeFileSync(join(dir, 'b.ts'), 'foo\n');
+    writeFileSync(join(dir, 'c.mjs'), 'foo\n');
+    const agent = freshAgent(dir);
+    const out = await grepTool.execute({ pattern: 'foo', glob: '*.[jt]s' }, agent);
+    assert.ok(out.includes('a.js'));
+    assert.ok(out.includes('b.ts'));
+    assert.ok(!out.includes('c.mjs'));
+  });
+
+  it('glob supports negation classes like *.[!m]s', async () => {
+    const dir = getDir();
+    writeFileSync(join(dir, 'a.js'), 'foo\n');
+    writeFileSync(join(dir, 'b.ts'), 'foo\n');
+    writeFileSync(join(dir, 'c.mjs'), 'foo\n');
+    const agent = freshAgent(dir);
+    const out = await grepTool.execute({ pattern: 'foo', glob: '*.[!m]s' }, agent);
+    assert.ok(out.includes('a.js'));
+    assert.ok(out.includes('b.ts'));
+    assert.ok(!out.includes('c.mjs'));
+  });
+
+  it('glob supports brace alternation like *.{js,mjs}', async () => {
+    const dir = getDir();
+    writeFileSync(join(dir, 'a.js'), 'foo\n');
+    writeFileSync(join(dir, 'b.mjs'), 'foo\n');
+    writeFileSync(join(dir, 'c.txt'), 'foo\n');
+    const agent = freshAgent(dir);
+    const out = await grepTool.execute({ pattern: 'foo', glob: '*.{js,mjs}' }, agent);
+    assert.ok(out.includes('a.js'));
+    assert.ok(out.includes('b.mjs'));
+    assert.ok(!out.includes('c.txt'));
+  });
+
+  it('unicode option enables \\p{...} property escapes', async () => {
+    const dir = getDir();
+    writeFileSync(join(dir, 'cn.txt'), '中文内容\n');
+    const agent = freshAgent(dir);
+    const without = await grepTool.execute({ pattern: '\\p{Script=Han}' }, agent);
+    assert.ok(without.includes('(no matches)'));
+    const withFlag = await grepTool.execute({ pattern: '\\p{Script=Han}+', unicode: true }, agent);
+    assert.ok(withFlag.includes('中文内容'));
   });
 
   it('handles CRLF files without trailing \\r in output', async () => {
