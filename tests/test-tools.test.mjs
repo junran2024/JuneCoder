@@ -342,6 +342,136 @@ describe('grepTool', () => {
     const out = await grepTool.execute({ pattern: 'zzzzzNOTFOUNDzzzzz' }, agent);
     assert.ok(out.includes('(no matches)'));
   });
+
+  it('reports path:line:content with 1-based line numbers', async () => {
+    const dir = getDir();
+    writeFileSync(join(dir, 'data.txt'), 'alpha\nworld\nbeta');
+    const agent = freshAgent(dir);
+    const out = await grepTool.execute({ pattern: 'world' }, agent);
+    assert.match(out, /data\.txt:2:world/);
+  });
+
+  it('uses real JS regex semantics (alternation, \\d)', async () => {
+    const dir = getDir();
+    writeFileSync(join(dir, 'data.txt'), 'foo\nbar\nbaz123\nqux');
+    const agent = freshAgent(dir);
+    const alt = await grepTool.execute({ pattern: 'foo|bar' }, agent);
+    assert.ok(alt.includes(':1:foo') && alt.includes(':2:bar'));
+    assert.ok(!alt.includes('baz'));
+    const digits = await grepTool.execute({ pattern: '\\d+' }, agent);
+    assert.ok(digits.includes('baz123'));
+  });
+
+  it('supports caseInsensitive', async () => {
+    const dir = getDir();
+    writeFileSync(join(dir, 'data.txt'), 'Hello World');
+    const agent = freshAgent(dir);
+    const strict = await grepTool.execute({ pattern: 'hello' }, agent);
+    assert.ok(strict.includes('(no matches)'));
+    const ci = await grepTool.execute({ pattern: 'hello', caseInsensitive: true }, agent);
+    assert.ok(ci.includes('Hello World'));
+  });
+
+  it('glob without / matches the file name (like --include)', async () => {
+    const dir = getDir();
+    writeFileSync(join(dir, 'a.mjs'), 'foo\n');
+    writeFileSync(join(dir, 'b.txt'), 'foo\n');
+    const agent = freshAgent(dir);
+    const out = await grepTool.execute({ pattern: 'foo', glob: '*.mjs' }, agent);
+    assert.ok(out.includes('a.mjs'));
+    assert.ok(!out.includes('b.txt'));
+  });
+
+  it('glob with / matches the relative path', async () => {
+    const dir = getDir();
+    mkdirSync(join(dir, 'src'));
+    writeFileSync(join(dir, 'src', 'a.mjs'), 'foo\n');
+    writeFileSync(join(dir, 'b.mjs'), 'foo\n');
+    const agent = freshAgent(dir);
+    const out = await grepTool.execute({ pattern: 'foo', glob: '**/a.mjs' }, agent);
+    assert.ok(out.includes('src/a.mjs'));
+    assert.ok(!out.includes('b.mjs'));
+  });
+
+  it('handles CRLF files without trailing \\r in output', async () => {
+    const dir = getDir();
+    writeFileSync(join(dir, 'win.txt'), 'one\r\ntwo\r\n');
+    const agent = freshAgent(dir);
+    const out = await grepTool.execute({ pattern: 'two' }, agent);
+    assert.ok(out.includes(':2:two'));
+    assert.ok(!out.includes('two\r'));
+  });
+
+  it('skips binary files (NUL bytes)', async () => {
+    const dir = getDir();
+    writeFileSync(join(dir, 'text.txt'), 'needle\n');
+    writeFileSync(join(dir, 'bin.dat'), Buffer.from([0x6e, 0x65, 0x65, 0x64, 0x6c, 0x65, 0x00, 0x0a]));
+    const agent = freshAgent(dir);
+    const out = await grepTool.execute({ pattern: 'needle' }, agent);
+    assert.ok(out.includes('text.txt'));
+    assert.ok(!out.includes('bin.dat'));
+  });
+
+  it('decodes multi-byte UTF-8 characters split across chunk boundaries', async () => {
+    const dir = getDir();
+    // 1.5MB of '中' (3 bytes each): every 1MB chunk boundary lands mid-character
+    // (1048576 % 3 === 1), so per-chunk decoding would produce U+FFFD garbage.
+    writeFileSync(join(dir, 'cn.txt'), '中'.repeat(500000));
+    const agent = freshAgent(dir);
+    const out = await grepTool.execute({ pattern: '中' }, agent);
+    assert.ok(out.includes('中'));
+    assert.ok(!out.includes('�'));
+  });
+
+  it('skips node_modules and .git directories', async () => {
+    const dir = getDir();
+    mkdirSync(join(dir, 'node_modules'), { recursive: true });
+    mkdirSync(join(dir, '.git'), { recursive: true });
+    writeFileSync(join(dir, 'node_modules', 'pkg.js'), 'secret\n');
+    writeFileSync(join(dir, '.git', 'config'), 'secret\n');
+    writeFileSync(join(dir, 'good.js'), 'secret\n');
+    const agent = freshAgent(dir);
+    const out = await grepTool.execute({ pattern: 'secret' }, agent);
+    assert.ok(out.includes('good.js'));
+    assert.ok(!out.includes('node_modules'));
+    assert.ok(!out.includes('.git'));
+  });
+
+  it('searches a single file via path', async () => {
+    const dir = getDir();
+    writeFileSync(join(dir, 'a.txt'), 'one\n');
+    writeFileSync(join(dir, 'b.txt'), 'two\n');
+    const agent = freshAgent(dir);
+    const out = await grepTool.execute({ pattern: 'one', path: 'a.txt' }, agent);
+    assert.ok(out.includes('a.txt:1:one'));
+    assert.ok(!out.includes('b.txt'));
+  });
+
+  it('caps output at 200 results and reports the remainder', async () => {
+    const dir = getDir();
+    const lines = Array.from({ length: 250 }, (_, i) => `match line ${i}`).join('\n');
+    writeFileSync(join(dir, 'big.txt'), lines);
+    const agent = freshAgent(dir);
+    const out = await grepTool.execute({ pattern: 'match line' }, agent);
+    assert.match(out, /and 50 more matches/);
+    const shown = out.split('\n').filter((l) => l.includes('big.txt')).length;
+    assert.strictEqual(shown, 200);
+  });
+
+  it('reports invalid regular expressions instead of swallowing them', async () => {
+    const dir = getDir();
+    writeFileSync(join(dir, 'data.txt'), 'x');
+    const agent = freshAgent(dir);
+    const out = await grepTool.execute({ pattern: '(unclosed' }, agent);
+    assert.match(out, /Error: invalid regular expression/);
+  });
+
+  it('reports missing paths instead of returning (no matches)', async () => {
+    const dir = getDir();
+    const agent = freshAgent(dir);
+    const out = await grepTool.execute({ pattern: 'x', path: 'does-not-exist' }, agent);
+    assert.match(out, /Error: path not found/);
+  });
 });
 
 // ─── lsTool ──────────────────────────────────────────────────────────────────
