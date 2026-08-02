@@ -568,7 +568,32 @@ export async function startTUI(agent, opts = {}) {
       case "goal": state.goalMode = true; state.status = "Define your goal and press Enter"; render(); break;
       case "plan": agent.planMode = !agent.planMode; pushLine("  Plan mode " + (agent.planMode ? "ON" : "OFF"), C.tool); break;
       case "auto": agent.autoApprove = !agent.autoApprove; pushLine("  Auto-approve " + (agent.autoApprove ? "ON" : "OFF"), agent.autoApprove ? C.warn : C.tool); break;
-      case "model": pushLine("  Model: " + agent.provider.model + " | Provider: " + (agent.provider.type || "?"), C.dim); break;
+      case "model": {
+        const { getProviderModels } = await import('./provider.mjs');
+        const models = getProviderModels(agent.provider.type || 'deepseek');
+        if (models.length === 0) { pushLine("No models for this provider.", C.dim); break; }
+        const current = agent.provider.model;
+        const options = models.map(m => m === current ? m + " (current)" : m);
+        options.push("Cancel");
+        state.question = {
+          text: "Select model: (arrow keys, Enter to confirm)",
+          options,
+          resolve: async (answer) => {
+            if (answer === "Cancel" || !answer) { pushLine("Cancelled.", C.dim); state.status = "Ready"; render(); return; }
+            const model = answer.replace(" (current)", "");
+            if (!models.includes(model)) { pushLine("Invalid model.", C.error); state.status = "Ready"; render(); return; }
+            const { saveModel } = await import('./config-provider.mjs');
+            saveModel(agent.provider.type || agent.provider.name || 'deepseek', model);
+            agent.provider.model = model;
+            pushLine("Model switched to " + model, C.tool);
+            state.status = "Ready";
+            render();
+          }
+        };
+        state.status = "Select a model";
+        render();
+        break;
+      }
       case "key": {
         pushLine("  Current key: " + (agent.provider.apiKey ? agent.provider.apiKey.slice(0, 8) + "..." : "(none)"), C.dim);
         pushLine("  Paste a new key.", C.tool);

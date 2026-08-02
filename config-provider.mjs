@@ -8,22 +8,21 @@
  *
  * Config format:
  *   { providers: [{ name, baseURL, model, thinking, apiKey }], activeProvider }
+ *
+ * Per-provider defaults (model, baseURL, thinking) live in provider.mjs.
+ * This module only persists and reads user config — no provider-specific knowledge.
  */
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { getProviderDefaults } from './provider.mjs';
 
 const CONFIG_PATH = join(homedir(), '.junecoder', 'config.json');
 const ENV_PATH = join(homedir(), '.junecoder', '.env');
 
+/** Boot defaults — only used when no config.json exists yet. */
 const DEFAULT_PROVIDERS = [
-  {
-    name: 'deepseek',
-    baseURL: 'https://api.deepseek.com',
-    model: 'deepseek-v4-pro',
-    thinking: { type: 'enabled' },
-    apiKey: '',
-  },
+  { name: 'deepseek', ...getProviderDefaults('deepseek'), apiKey: '' },
 ];
 
 function readConfig() {
@@ -60,14 +59,18 @@ function readEnvKey() {
   return '';
 }
 
-/** Falls back to ~/.junecoder/.env, then DEEPSEEK_API_KEY env var. */
+/** Resolve the active provider from config, filling missing fields from the registry. */
 export function getActiveProvider() {
   const config = readConfig();
   const p = config.providers.find(p => p.name === config.activeProvider)
     || config.providers[0]
     || DEFAULT_PROVIDERS[0];
 
-  let apiKey = p.apiKey || '';
+  // Fill missing fields from provider defaults
+  const defaults = getProviderDefaults(p.name) || {};
+  const merged = { ...defaults, ...p, type: p.name };
+
+  let apiKey = merged.apiKey || '';
 
   // Fallback: migrate from ~/.junecoder/.env
   if (!apiKey) {
@@ -85,7 +88,7 @@ export function getActiveProvider() {
     apiKey = process.env.DEEPSEEK_API_KEY || '';
   }
 
-  return { ...p, type: p.name, apiKey };
+  return { ...merged, apiKey };
 }
 
 /** Persist API key. Called by /key in TUI. */
@@ -93,5 +96,13 @@ export function saveApiKey(providerName, apiKey) {
   const config = readConfig();
   const p = config.providers.find(p => p.name === providerName);
   if (p) p.apiKey = apiKey;
+  writeConfig(config);
+}
+
+/** Persist model selection. Called by /model in TUI. */
+export function saveModel(providerName, model) {
+  const config = readConfig();
+  const p = config.providers.find(p => p.name === providerName);
+  if (p) p.model = model;
   writeConfig(config);
 }

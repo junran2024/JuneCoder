@@ -62,7 +62,7 @@ describe('chat - SSE parsing (mocked)', () => {
     ]));
 
     const result = await chat(
-      { apiKey: 'test-key' },
+      { apiKey: 'test-key', type: 'deepseek' },
       { messages: [{ role: 'user', content: 'hi' }] },
     );
 
@@ -80,7 +80,7 @@ describe('chat - SSE parsing (mocked)', () => {
     ]));
 
     await chat(
-      { apiKey: 'test-key' },
+      { apiKey: 'test-key', type: 'deepseek' },
       {
         messages: [{ role: 'user', content: 'hi' }],
         onToken: (t) => tokens.push(t),
@@ -105,7 +105,7 @@ describe('chat - SSE parsing (mocked)', () => {
     ]));
 
     const result = await chat(
-      { apiKey: 'test-key' },
+      { apiKey: 'test-key', type: 'deepseek' },
       { messages: [{ role: 'user', content: 'read a file' }], tools: [{}] },
     );
 
@@ -127,7 +127,7 @@ describe('chat - SSE parsing (mocked)', () => {
     ]));
 
     const result = await chat(
-      { apiKey: 'test-key' },
+      { apiKey: 'test-key', type: 'deepseek' },
       { messages: [{ role: 'user', content: 'read and write' }], tools: [{}, {}] },
     );
 
@@ -144,7 +144,7 @@ describe('chat - SSE parsing (mocked)', () => {
     ]));
 
     const result = await chat(
-      { apiKey: 'test-key' },
+      { apiKey: 'test-key', type: 'deepseek' },
       { messages: [{ role: 'user', content: 'q' }] },
     );
 
@@ -160,7 +160,7 @@ describe('chat - SSE parsing (mocked)', () => {
     ]));
 
     await chat(
-      { apiKey: 'test-key' },
+      { apiKey: 'test-key', type: 'deepseek' },
       {
         messages: [{ role: 'user', content: 'q' }],
         onReasoning: (r) => reasoningPieces.push(r),
@@ -176,7 +176,7 @@ describe('chat - SSE parsing (mocked)', () => {
     ]));
 
     const result = await chat(
-      { apiKey: 'test-key' },
+      { apiKey: 'test-key', type: 'deepseek' },
       { messages: [{ role: 'user', content: 'run' }], tools: [{}] },
     );
 
@@ -209,7 +209,7 @@ describe('chat - SSE parsing (mocked)', () => {
     globalThis.fetch = async () => new Response(stream, { status: 200 });
 
     const result = await chat(
-      { apiKey: 'test-key' },
+      { apiKey: 'test-key', type: 'deepseek' },
       { messages: [{ role: 'user', content: 'hi' }] },
     );
 
@@ -224,7 +224,7 @@ describe('chat - SSE parsing (mocked)', () => {
     await assert.rejects(
       () =>
         chat(
-          { apiKey: 'bad-key' },
+          { apiKey: 'bad-key', type: 'deepseek' },
           { messages: [{ role: 'user', content: 'hi' }] },
         ),
       /DeepSeek request failed \(401\)/,
@@ -256,7 +256,7 @@ describe('chat - integration (real API)', () => {
 
   maybeIt(`returns text content${reason}`, () => withAuthSkip(async () => {
     const result = await chat(
-      { apiKey },
+      { apiKey, type: 'deepseek' },
       {
         messages: [{ role: 'user', content: 'Reply with exactly "OK"' }],
       },
@@ -267,7 +267,7 @@ describe('chat - integration (real API)', () => {
 
   maybeIt(`returns tool_calls when tools provided${reason}`, () => withAuthSkip(async () => {
     const result = await chat(
-      { apiKey },
+      { apiKey, type: 'deepseek' },
       {
         messages: [{ role: 'user', content: 'What is the current date? Use get_date.' }],
         tools: [
@@ -287,7 +287,7 @@ describe('chat - integration (real API)', () => {
 
   maybeIt(`includes reasoning when thinking enabled${reason}`, () => withAuthSkip(async () => {
     const result = await chat(
-      { apiKey },
+      { apiKey, type: 'deepseek' },
       {
         messages: [{ role: 'user', content: 'Count from 1 to 3. Be brief.' }],
       },
@@ -298,7 +298,7 @@ describe('chat - integration (real API)', () => {
   maybeIt(`fires onToken callback${reason}`, () => withAuthSkip(async () => {
     const tokens = [];
     const result = await chat(
-      { apiKey },
+      { apiKey, type: 'deepseek' },
       {
         messages: [{ role: 'user', content: 'Say hello' }],
         onToken: (t) => tokens.push(t),

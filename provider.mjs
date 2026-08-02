@@ -1,13 +1,15 @@
 /**
- * DeepSeek LLM provider — calls api.deepseek.com/chat/completions.
+ * LLM provider — routes to the correct API based on provider config.
+ *
+ * Supported providers are registered below.  Each entry declares its
+ * default baseURL, model, and any provider-specific options (e.g. thinking).
  *
  * @param {object} provider
- * @param {string} provider.apiKey - DeepSeek API key
- * @param {string} [provider.model='deepseek-v4-pro']
- * @param {string} [provider.baseURL='https://api.deepseek.com']
- * @param {object} [provider.thinking] - thinking/reasoning config
- * @param {string} [provider.thinking.type='enabled'] - "enabled" | "disabled"
- * @param {string} [provider.thinking.reasoning_effort] - "low"|"medium"|"high"
+ * @param {string} provider.apiKey
+ * @param {string} provider.type        - provider name (e.g. 'deepseek')
+ * @param {string} [provider.model]     - falls back to REGISTRY default
+ * @param {string} [provider.baseURL]   - falls back to REGISTRY default
+ * @param {object} [provider.thinking]  - provider-specific reasoning config
  * @param {object} opts
  * @param {object[]} opts.messages
  * @param {object[]} [opts.tools]
@@ -16,12 +18,36 @@
  * @param {AbortSignal} [opts.signal]
  * @returns {Promise<{ content: string|null, toolCalls: object[], usage: object|null, reasoning: string|null }>}
  */
+
+// ─── Provider registry — single source of truth for per-provider defaults ──────
+
+const REGISTRY = {
+  deepseek: {
+    baseURL: 'https://api.deepseek.com',
+    model: 'deepseek-v4-pro',
+    thinking: { type: 'enabled' },
+    models: ['deepseek-v4-pro', 'deepseek-v4-flash'],
+  },
+};
+
+/** Return a *copy* of the default config for a named provider, or null. */
+export function getProviderDefaults(name) {
+  const entry = REGISTRY[name];
+  return entry ? structuredClone(entry) : null;
+}
+
+/** Return the list of available models for a named provider. */
+export function getProviderModels(name) {
+  return REGISTRY[name]?.models || [];
+}
+
 export async function chat(provider, { messages, tools, onToken, onReasoning, signal } = {}) {
+  const defaults = REGISTRY[provider.type] || {};
   const {
     apiKey,
-    model = 'deepseek-v4-pro',
-    baseURL = 'https://api.deepseek.com',
-    thinking = { type: 'enabled' },
+    model = defaults.model,
+    baseURL = defaults.baseURL,
+    thinking = defaults.thinking || {},
   } = provider;
 
   const body = {
