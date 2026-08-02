@@ -30,7 +30,7 @@ function readConfig() {
     if (existsSync(CONFIG_PATH)) {
       return JSON.parse(readFileSync(CONFIG_PATH, 'utf-8'));
     }
-  } catch { /* corrupt — use defaults */ }
+  } catch { /* corrupt or unreadable config — fall back to defaults so the agent can still start */ }
   return { providers: structuredClone(DEFAULT_PROVIDERS), activeProvider: 'deepseek' };
 }
 
@@ -55,7 +55,7 @@ function readEnvKey() {
         return trimmed.slice(eq + 1).trim();
       }
     }
-  } catch { /* ignore */ }
+  } catch { /* .env is an optional legacy source — failure falls through to '' and the key is resolved elsewhere */ }
   return '';
 }
 

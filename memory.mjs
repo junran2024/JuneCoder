@@ -35,7 +35,7 @@ function loadEntries(dir) {
       const raw = readFileSync(join(dir, f), 'utf-8');
       entries.push(JSON.parse(raw));
     } catch {
-      // skip corrupt files
+      // skip corrupt entries — one bad memory file must not break the whole list
     }
   }
   return entries;
@@ -45,7 +45,7 @@ function loadEntries(dir) {
 function saveEntry(dir, entry) {
   try {
     mkdirSync(dir, { recursive: true });
-  } catch { /* dir exists */ }
+  } catch { /* mkdirSync races on concurrent runs — EEXIST is fine */ }
   writeFileSync(join(dir, entry.id + '.json'), JSON.stringify(entry, null, 2), 'utf-8');
 }
 

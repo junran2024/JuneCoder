@@ -55,7 +55,7 @@ export async function executeToolCalls(agent, toolByName, toolCalls, callbacks, 
 
     // Show tool call in TUI
     if (cb.onToolCall) {
-      try { cb.onToolCall(name, args); } catch { /* ignore */ }
+      try { cb.onToolCall(name, args); } catch { /* user-supplied callback — never let it kill the loop */ }
     }
 
     // Plan mode: reject non-readonly tools
@@ -188,7 +188,7 @@ async function runOne(agent, item, callbacks, signal) {
   if (callbacks.onToolOutput) {
     try {
       callbacks.onToolOutput(name, output, error);
-    } catch { /* ignore callback errors */ }
+    } catch { /* user-supplied callback — never let it kill the loop */ }
   }
 
   return { id, name, output, error };

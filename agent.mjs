@@ -137,7 +137,7 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
     // Step 2: Compress check
     try {
       await checkAndCompress(agent, compactThreshold, cb);
-    } catch { /* compression is non-fatal */ }
+    } catch { /* history compression is best-effort — on failure the conversation continues uncompressed */ }
 
     // Step 3: Build messages (clean transient for LLM)
     const messages = repairHistory(agent.history);
@@ -155,7 +155,7 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
 
     // Report usage
     if (response.usage) {
-      try { cb.onUsage(response.usage); } catch { /* ignore */ }
+      try { cb.onUsage(response.usage); } catch { /* user-supplied callback — never let it kill the loop */ }
     }
 
     // Step 4: No tool_calls — completion guard
@@ -168,7 +168,7 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
         agent.history.push(assistantMsg);
         // Inject checklist for model to review
         agent.history.push({ role: 'user', content: VERIFY_CHECKLIST });
-        try { cb.onSystem('verify', 'Checklist injected:\n' + VERIFY_CHECKLIST); } catch { /* ignore */ }
+        try { cb.onSystem('verify', 'Checklist injected:\n' + VERIFY_CHECKLIST); } catch { /* user-supplied callback — never let it kill the loop */ }
         agent._mutatedThisRun = false;
         continue; // Loop again to let the model respond to the checklist
       }
@@ -224,7 +224,7 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
                   : join(agent.cwd, args.path);
                 await reindexFile(agent.memory, agent.cwd, absPath);
               }
-            } catch { /* non-fatal */ }
+            } catch { /* memory reindex is best-effort — a failed index must not fail the verify step */ }
           }
         }
 
@@ -236,12 +236,12 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
 
       // Report result (skip for denied tools — askPermission already showed denial)
       if (!r.denied) {
-        try { cb.onToolResult(r.name, r.output, r.error); } catch { /* ignore */ }
+        try { cb.onToolResult(r.name, r.output, r.error); } catch { /* user-supplied callback — never let it kill the loop */ }
       }
 
       // Sync task list to TUI after task tool
       if (r.name === 'task' && !r.error && !r.denied) {
-        try { cb.onTaskUpdate(agent.tasks); } catch { /* ignore */ }
+        try { cb.onTaskUpdate(agent.tasks); } catch { /* user-supplied callback — never let it kill the loop */ }
       }
     }
 
@@ -267,7 +267,7 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
         agent._recentCallSigs[agent._recentCallSigs.length - 2] === sigKey &&
         agent._recentCallSigs[agent._recentCallSigs.length - 3] === sigKey
       ) {
-        try { cb.onSystem('loop', 'Repetitive calls detected, switching strategy'); } catch { /* ignore */ }
+        try { cb.onSystem('loop', 'Repetitive calls detected, switching strategy'); } catch { /* user-supplied callback — never let it kill the loop */ }
         agent.history.push({
           role: 'user',
           content: '[System reminder: you appear to be stuck in a loop — the same tool calls have been made 3 times in a row. Try a different approach or ask for clarification.]',
@@ -282,7 +282,7 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
       const budget = agent.config.agent?.goalTurns || DEFAULT_GOAL_TURNS;
       const used = agent.goal.turnsUsed;
       const pct = Math.floor((used / budget) * 100);
-      try { cb.onGoalProgress?.(agent.goal.objective, used, budget); } catch { /* ignore */ }
+      try { cb.onGoalProgress?.(agent.goal.objective, used, budget); } catch { /* user-supplied callback — never let it kill the loop */ }
       agent.history.push({
         role: 'user',
         content:
@@ -307,7 +307,7 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
 
     // Step 11: Plan mode guidance (every 8 turns)
     if (agent.planMode && agent._turnsInPlanMode >= 8) {
-      try { cb.onSystem('plan', `${agent._turnsInPlanMode} turns in plan mode, consider exiting`); } catch { /* ignore */ }
+      try { cb.onSystem('plan', `${agent._turnsInPlanMode} turns in plan mode, consider exiting`); } catch { /* user-supplied callback — never let it kill the loop */ }
       agent.history.push({
         role: 'user',
         content: `[You have been in plan mode for ${agent._turnsInPlanMode} turns. If you have enough information, consider exiting plan mode to implement.]`,
@@ -316,7 +316,7 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
     }
 
     // Step 12: Turn end callback
-    try { cb.onTurnEnd(turn, maxTurns); } catch { /* ignore */ }
+    try { cb.onTurnEnd(turn, maxTurns); } catch { /* user-supplied callback — never let it kill the loop */ }
   }
 
   // Loop exhausted without returning

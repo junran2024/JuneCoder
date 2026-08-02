@@ -124,7 +124,7 @@ export function readSkill(cwd, name) {
 
     for (const cand of candidates) {
       let st;
-      try { st = statSync(cand); } catch { continue; }
+      try { st = statSync(cand); } catch { /* candidate path doesn't exist — try the next one */ continue; }
       if (!st.isFile()) continue;
       try {
         return readFileSync(cand, 'utf-8');

@@ -39,7 +39,7 @@ function jsonRpc(proc, method, params = null) {
             if (msg.error) reject(new Error(`MCP error: ${msg.error.message || JSON.stringify(msg.error)}`));
             else resolve(msg.result);
           }
-        } catch { /* skip parse errors */ }
+        } catch { /* skip non-JSON chunks (stray logs from the MCP server) */ }
       }
     };
 
@@ -275,7 +275,7 @@ export async function connectMcpServer(srv) {
 
     return tools;
   } catch (err) {
-    try { proc.kill(); } catch { /* ignore */ }
+    try { proc.kill(); } catch { /* cleanup on failed connect — process may already be gone */ }
     throw new Error(`MCP server "${name}" connection failed: ${err.message}${stderr ? '\nStderr: ' + stderr.slice(-500) : ''}`);
   }
 }
@@ -302,7 +302,7 @@ export function loadMcpProjects(cwd) {
   for (const mcpDir of dirs) {
     if (!existsSync(mcpDir)) continue;
     let entries;
-    try { entries = readdirSync(mcpDir, { withFileTypes: true }); } catch { continue; }
+    try { entries = readdirSync(mcpDir, { withFileTypes: true }); } catch { /* unreadable dir — skip it, keep scanning */ continue; }
 
     for (const ent of entries) {
       if (!ent.isFile()) continue;
@@ -322,7 +322,7 @@ export function loadMcpProjects(cwd) {
         if (!description) {
           description = `${count} MCP server${count !== 1 ? 's' : ''}`;
         }
-      } catch { continue; }
+      } catch { /* corrupt project file — skip it, keep scanning */ continue; }
 
       projects.push({ name, description });
     }
@@ -360,7 +360,7 @@ export function readMcpProject(name, cwd) {
     if (!existsSync(filePath)) continue;
     try {
       return JSON.parse(readFileSync(filePath, 'utf-8'));
-    } catch { continue; }
+    } catch { /* corrupt config — treat as no such project */ continue; }
   }
 
   return null;
@@ -377,7 +377,7 @@ export async function closeAllMcp(agent) {
   if (!agent || !agent._mcpProcesses) return;
 
   for (const proc of agent._mcpProcesses) {
-    try { proc.kill('SIGTERM'); } catch { /* already dead */ }
+    try { proc.kill('SIGTERM'); } catch { /* process may have exited on its own — killing a dead pid throws */ }
   }
   agent._mcpProcesses = [];
   if (agent._mcpProjectNames) agent._mcpProjectNames = [];
@@ -406,7 +406,7 @@ export function removeMcpTools(agent, name) {
   if (agent._mcpProcesses) {
     agent._mcpProcesses = agent._mcpProcesses.filter((p) => {
       if (p._mcpName === name) {
-        try { p.kill('SIGTERM'); } catch { /* ignore */ }
+        try { p.kill('SIGTERM'); } catch { /* process may already be gone */ }
         return false;
       }
       return true;

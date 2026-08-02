@@ -145,7 +145,7 @@ export function loadProjectInstructions(cwd) {
         contents.push(`--- ${label} ---\n${text}`);
       }
     } catch {
-      // skip unreadable files
+      // skip unreadable files — instruction sources are optional hints, not required
     }
   }
 
@@ -194,7 +194,7 @@ export function buildSystemPrompt(agent, depth) {
       const listing = formatSkillListing(skills);
       prompt += `\n\n--- Available Skills ---\n${listing}`;
     }
-  } catch (err) { console.error('[prompt] skills listing failed:', err); }
+  } catch { /* skills listing is best-effort: a failure must not block session startup */ }
 
   // Append MCP project listing (name + one-line description, no auth)
   try {
@@ -203,7 +203,7 @@ export function buildSystemPrompt(agent, depth) {
       const listing = formatMcpListing(projects);
       prompt += `\n\n--- Available MCP Projects ---\n${listing}`;
     }
-  } catch (err) { console.error('[prompt] MCP projects listing failed:', err); }
+  } catch { /* MCP listing is best-effort: a failure must not block session startup */ }
 
   return prompt;
 }

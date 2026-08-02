@@ -39,7 +39,8 @@ export function saveSession(agent, displayLines) {
     };
     writeFileSync(sessionPath(agent.cwd), JSON.stringify(data, null, 2), 'utf-8');
   } catch {
-    // Non-fatal: session save fails silently
+    // Non-fatal: a session save failure must not crash the agent —
+    // the conversation lives in memory and is saved again on exit
   }
 }
 
@@ -60,7 +61,7 @@ export function clearSession(cwd) {
   try {
     const path = sessionPath(cwd);
     if (existsSync(path)) unlinkSync(path);
-  } catch { /* ignore */ }
+  } catch { /* best-effort: file may already be gone */ }
 }
 
 /** Archive the current session with timestamp. */
@@ -71,7 +72,7 @@ export function archiveCurrent(cwd) {
     const ts = Date.now();
     const dst = join(sessionsDir(), pathSlug(cwd) + '_' + ts + '.json');
     renameSync(src, dst);
-  } catch { /* ignore */ }
+  } catch { /* best-effort: archiving failure is non-critical, session stays on disk */ }
 }
 
 /** List available session slots for a given project directory. */

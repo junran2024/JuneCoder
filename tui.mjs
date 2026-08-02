@@ -133,9 +133,9 @@ export async function startTUI(agent, opts = {}) {
   let cleanedUp = false;
   const cleanup = () => {
     if (cleanedUp) return; cleanedUp = true;
-    try { archiveCurrent(agent.cwd); saveSession(agent, state.lines); } catch {}
-    try { closeAllMcp(agent); } catch {}
-    if (process.stdin.setRawMode) { try { process.stdin.setRawMode(false); } catch {} }
+    try { archiveCurrent(agent.cwd); saveSession(agent, state.lines); } catch { /* shutdown best-effort — nothing actionable left to do */ }
+    try { closeAllMcp(agent); } catch { /* shutdown best-effort — child processes die with the process anyway */ }
+    if (process.stdin.setRawMode) { try { process.stdin.setRawMode(false); } catch { /* terminal cleanup best-effort — process is exiting */ } }
     process.stdout.write(ansi.mouseOff + ansi.mainBuffer + ansi.showCursor + ansi.reset);
   };
   process.on("exit", cleanup);
@@ -541,7 +541,7 @@ export async function startTUI(agent, opts = {}) {
       onGoalProgress: (objective, turn, max) => { state.goal = { objective, turn, max }; render(); },
       onUsage: u => { state.tokens.prompt = u.prompt_tokens ?? 0; state.tokens.completion = u.completion_tokens ?? 0; state.tokens.total = u.total_tokens ?? 0; state.tokens.cacheHit = u.prompt_cache_hit_tokens ?? u.prompt_tokens_details?.cached_tokens ?? 0; state.tokens.cacheMiss = u.prompt_cache_miss_tokens ?? 0; state.tokens.totalPrompt += u.prompt_tokens ?? 0; state.tokens.totalCompletion += u.completion_tokens ?? 0; state.tokens.totalTotal += u.total_tokens ?? 0; agent._lastTotalTokens = u.total_tokens ?? 0; },
       onTaskUpdate: items => { state.tasks = items || []; const done = items.filter(i => i.status === "done").length; const cur = items.find(i => i.status === "in_progress"); pushLine("  [task] " + done + "/" + items.length + (cur ? " \u25b6 " + cur.title : ""), C.dim); render(); },
-      onTurnEnd: (() => { let n = 0; return () => { if (++n % 5 === 0) { try { saveSession(agent, state.lines); } catch {} } }; })(),
+      onTurnEnd: (() => { let n = 0; return () => { if (++n % 5 === 0) { try { saveSession(agent, state.lines); } catch { /* autosave best-effort — must not interrupt the loop */ } } }; })(),
     };
     for (let resume = false; ; resume = true) {
       try { await runAgent(agent, text, callbacks, { signal: state.controller.signal, resume }); flushStream(); break; }
@@ -554,7 +554,7 @@ export async function startTUI(agent, opts = {}) {
     clearInterval(ticker); state.processing = false; state.controller = null; state.status = "Ready";
     if (state.tasks.length > 0 && state.tasks.every(t => t.status === "done")) { state.tasks = []; agent.tasks = []; }
     if (agent.goal?.status !== 'active') state.goal = null;
-    try { saveSession(agent, state.lines); } catch {} render();
+    try { saveSession(agent, state.lines); } catch { /* final save best-effort — render must run regardless */ } render();
   }
 
   function flushStream() { if (state.reasoning) { pushLine(state.reasoning, C.reason); state.reasoning = ""; } if (state.streaming) { pushLine(state.streaming, C.text); state.streaming = ""; } }
