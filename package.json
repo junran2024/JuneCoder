@@ -1,16 +1,21 @@
 {
   "name": "junecoder",
+  "displayName": "JuneCoder - Zero-Dependency AI Agent",
   "version": "1.1.26",
-  "description": "Zero Npm Dependencies Agent Framework",
-  "main": "agent.mjs",
+  "description": "Zero Npm Dependencies Agent Framework with Terminal TUI and VS Code Extension UI",
+  "publisher": "junran2024",
+  "main": "extension.js",
   "type": "module",
   "bin": {
     "junecoder": "cli.js"
   },
   "files": [
     "*.mjs",
+    "*.js",
     "*.md",
     "cli.js",
+    "extension.js",
+    "webview/",
     "tools/*.mjs",
     "package.json"
   ],
@@ -18,14 +23,71 @@
     "test": "node --test tests/test-*.test.mjs"
   },
   "engines": {
-    "node": ">=21.7"
+    "node": ">=21.7",
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "AI",
+    "Coding Assistant",
+    "Chat"
+  ],
+  "activationEvents": [
+    "onCommand:junecoder.openChat"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "junecoder-sidebar",
+          "title": "JuneCoder",
+          "icon": "$(robot)"
+        }
+      ]
+    },
+    "views": {
+      "junecoder-sidebar": [
+        {
+          "id": "junecoder.chatView",
+          "name": "JuneCoder Chat",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "junecoder.openChat",
+        "title": "JuneCoder: Open Chat Panel",
+        "category": "JuneCoder"
+      },
+      {
+        "command": "junecoder.setApiKey",
+        "title": "JuneCoder: Set DeepSeek API Key",
+        "category": "JuneCoder"
+      },
+      {
+        "command": "junecoder.clearSession",
+        "title": "JuneCoder: Clear Session History",
+        "category": "JuneCoder"
+      }
+    ],
+    "configuration": {
+      "title": "JuneCoder",
+      "properties": {
+        "junecoder.autoApproveReadOnly": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically approve read-only tools in VS Code extension UI."
+        }
+      }
+    }
   },
   "keywords": [
     "agent",
     "react",
     "llm",
     "coding",
-    "ai"
+    "ai",
+    "vscode-extension"
   ],
   "author": "",
   "license": "ISC"
