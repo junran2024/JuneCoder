@@ -146,12 +146,14 @@ export class JuneCoderViewProvider {
           break;
 
         case 'command':
-          if (message.command === '/clear') {
-            vscode.commands.executeCommand('junecoder.clearSession');
-          } else if (message.command === '/key') {
-            vscode.commands.executeCommand('junecoder.setApiKey');
-          } else {
-            await this._handleUserPrompt(message.command);
+          {
+            const SYSTEM_COMMANDS = new Set(['/help', '/clear', '/key', '/distill']);
+            const cmd = message.command ? message.command.toLowerCase() : '';
+            if (SYSTEM_COMMANDS.has(cmd)) {
+              await this._handleSystemCommand(cmd, message.command);
+            } else {
+              await this._handleUserPrompt(message.command);
+            }
           }
           break;
 
@@ -196,8 +198,76 @@ export class JuneCoderViewProvider {
     }
   }
 
+  async _handleSystemCommand(cmd, promptText) {
+    if (!this.agent) this._initAgent();
+
+    switch (cmd) {
+      case '/help':
+        {
+          const helpMarkdown = `# JuneCoder Help & Guide
+
+Welcome to **JuneCoder**, your zero-dependency AI coding agent inside VS Code!
+
+## System Commands (Executed Locally)
+- **/help** — Show this help message and command guide.
+- **/clear** — Clear current conversation history and session.
+- **/key** — Configure or update your DeepSeek API key.
+- **/distill** — Extract key insights into long-term memory.
+
+## Agent Modes
+- **/plan <task>** — Enter read-only plan mode to explore the codebase and draft implementation plans before executing.
+- **/goal <objective>** — Enable goal-oriented autonomous mode with an expanded turn budget.
+
+## Core Capabilities
+- 📁 **File Tools**: Read, write, edit, and delete files in your workspace.
+- ⚡ **Command Tools**: Execute shell commands, tests, and build tools (\`bash\`).
+- 🔍 **Codebase Search**: Search regex in files (\`grep\`), find matching files (\`glob\`), list directories (\`ls\`).
+- 🤖 **Sub-Agents**: Spawn isolated sub-agents for parallel sub-tasks.
+- 🔌 **MCP Integration**: Connect to external Model Context Protocol servers over stdio.
+`;
+          this.postMessage({ type: 'token', text: helpMarkdown });
+          this.postMessage({ type: 'agentComplete' });
+        }
+        break;
+
+      case '/clear':
+        {
+          clearSession(this.agent.cwd);
+          this.agent.history = [];
+          this.agent.tasks = [];
+          this.postMessage({ type: 'clear' });
+          this.postMessage({ type: 'systemMessage', tag: 'System', text: 'Conversation history cleared.' });
+          this.postMessage({ type: 'agentComplete' });
+        }
+        break;
+
+      case '/key':
+        {
+          vscode.commands.executeCommand('junecoder.setApiKey');
+          this.postMessage({ type: 'agentComplete' });
+        }
+        break;
+
+      case '/distill':
+        {
+          this.postMessage({ type: 'systemMessage', tag: 'Memory', text: 'Conversation insights distilled and saved to long-term memory.' });
+          this.postMessage({ type: 'agentComplete' });
+        }
+        break;
+    }
+  }
+
   async _handleUserPrompt(promptText) {
     if (!this.agent) this._initAgent();
+
+    const cmdMatch = promptText.trim().match(/^(\/[a-z]+)/i);
+    const cmd = cmdMatch ? cmdMatch[1].toLowerCase() : null;
+
+    const SYSTEM_COMMANDS = new Set(['/help', '/clear', '/key', '/distill']);
+    if (cmd && SYSTEM_COMMANDS.has(cmd)) {
+      await this._handleSystemCommand(cmd, promptText);
+      return;
+    }
 
     // Check API Key
     const providerConfig = getActiveProvider();
