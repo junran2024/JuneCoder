@@ -105,18 +105,14 @@ describe('saveSession + loadSession', () => {
     assert.ok(!raw.includes('\x1b'), 'session file must not contain ANSI escapes');
   });
 
-  it('strips ANSI from text and guesses roles for legacy plain-string lines', () => {
+  it('strips ANSI from text; un-role\'d legacy lines fall back to the text role', () => {
     const dir = getDir();
     const agent = freshAgent(dir);
     const displayLines = [
       'plain \x1b[31mred\x1b[0m text',
       '',
       '❯ JuneCoder: hello',
-      '❯ You:',
       '  [tool] bash pwd',
-      '  [done] bash → ok',
-      '  [error] boom',
-      'Ran 3 turns (limit 3). Continue?',
     ];
 
     saveSession(agent, displayLines);
@@ -124,13 +120,9 @@ describe('saveSession + loadSession', () => {
 
     assert.deepStrictEqual(restored.displayLines, [
       { text: 'plain red text', role: 'text' },
-      { text: '', role: 'dim' },
-      { text: '❯ JuneCoder: hello', role: 'labelAssistant' },
-      { text: '❯ You:', role: 'labelUser' },
-      { text: '  [tool] bash pwd', role: 'tool' },
-      { text: '  [done] bash → ok', role: 'dim' },
-      { text: '  [error] boom', role: 'error' },
-      { text: 'Ran 3 turns (limit 3). Continue?', role: 'warn' },
+      { text: '', role: 'text' },
+      { text: '❯ JuneCoder: hello', role: 'text' },
+      { text: '  [tool] bash pwd', role: 'text' },
     ]);
   });
 
