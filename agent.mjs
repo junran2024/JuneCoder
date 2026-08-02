@@ -163,7 +163,7 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
       // Guard: if non-readonly tools were used but not verified, inject checklist
       if (agent._mutatedThisRun && !agent._verifiedThisRun && !agent.planMode) {
         // Save what the model said so it knows it already responded
-        const assistantMsg = { role: 'assistant', content: response.content };
+        const assistantMsg = { role: 'assistant', content: response.content || '' };
         if (response.reasoning) assistantMsg.reasoning_content = response.reasoning;
         agent.history.push(assistantMsg);
         // Inject checklist for model to review
@@ -174,7 +174,7 @@ export async function runAgent(agent, input, callbacks = {}, options = {}) {
       }
 
       // Push assistant response to history and return
-      const assistantMsg = { role: 'assistant', content: response.content };
+      const assistantMsg = { role: 'assistant', content: response.content || '' };
       if (response.reasoning) assistantMsg.reasoning_content = response.reasoning;
       agent.history.push(assistantMsg);
 
@@ -366,6 +366,10 @@ export function repairHistory(history) {
 
     // Clone to avoid mutating original
     const copy = { role: msg.role, content: msg.content };
+    // Guard: DeepSeek rejects assistant messages with neither content nor tool_calls
+    if (copy.role === 'assistant' && (copy.content == null) && !msg.tool_calls) {
+      copy.content = '';
+    }
     if (msg.tool_calls) copy.tool_calls = msg.tool_calls;
     if (msg.tool_call_id) copy.tool_call_id = msg.tool_call_id;
     if (msg.name) copy.name = msg.name;
