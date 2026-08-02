@@ -592,6 +592,22 @@
       display: flex;
     }
 
+    .slash-category-header {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 6px 12px 2px 12px;
+      user-select: none;
+    }
+
+    .slash-divider {
+      height: 1px;
+      background: var(--border-color);
+      margin: 4px 0;
+    }
+
     .slash-item {
       padding: 8px 12px;
       display: flex;
@@ -806,6 +822,7 @@
 
   <!-- Slash Commands Popover -->
   <div class="slash-popover" id="slash-popover">
+    <div class="slash-category-header">System Commands</div>
     <div class="slash-item" onclick="applySlash('/help')">
       <span class="slash-cmd">/help</span>
       <span class="slash-desc">Show available commands and usage</span>
@@ -818,17 +835,19 @@
       <span class="slash-cmd">/key</span>
       <span class="slash-desc">Configure DeepSeek API key</span>
     </div>
-    <div class="slash-item" onclick="applySlash('/goal')">
-      <span class="slash-cmd">/goal</span>
-      <span class="slash-desc">Start goal-oriented mode with higher turn budget</span>
+    <div class="slash-item" onclick="applySlash('/distill')">
+      <span class="slash-cmd">/distill</span>
+      <span class="slash-desc">Extract key insights into long-term memory</span>
     </div>
+    <div class="slash-divider"></div>
+    <div class="slash-category-header">Agent Commands</div>
     <div class="slash-item" onclick="applySlash('/plan')">
       <span class="slash-cmd">/plan</span>
       <span class="slash-desc">Toggle read-only plan mode</span>
     </div>
-    <div class="slash-item" onclick="applySlash('/distill')">
-      <span class="slash-cmd">/distill</span>
-      <span class="slash-desc">Extract key insights into long-term memory</span>
+    <div class="slash-item" onclick="applySlash('/goal')">
+      <span class="slash-cmd">/goal</span>
+      <span class="slash-desc">Start goal-oriented mode with higher turn budget</span>
     </div>
   </div>
 
@@ -876,12 +895,12 @@
     let filteredCommands = [];
 
     const COMMANDS_LIST = [
-      { cmd: '/help', desc: 'Show available commands and usage' },
-      { cmd: '/clear', desc: 'Clear current conversation history' },
-      { cmd: '/key', desc: 'Configure DeepSeek API key' },
-      { cmd: '/goal', desc: 'Start goal-oriented mode with higher turn budget' },
-      { cmd: '/plan', desc: 'Toggle read-only plan mode' },
-      { cmd: '/distill', desc: 'Extract key insights into long-term memory' }
+      { cmd: '/help', desc: 'Show available commands and usage', category: 'system' },
+      { cmd: '/clear', desc: 'Clear current conversation history', category: 'system' },
+      { cmd: '/key', desc: 'Configure DeepSeek API key', category: 'system' },
+      { cmd: '/distill', desc: 'Extract key insights into long-term memory', category: 'system' },
+      { cmd: '/plan', desc: 'Toggle read-only plan mode', category: 'agent' },
+      { cmd: '/goal', desc: 'Start goal-oriented mode with higher turn budget', category: 'agent' }
     ];
 
     // Command styles & badges mapping
@@ -1006,7 +1025,13 @@
         score: calculateFuzzyScore(queryPattern, item)
       }))
       .filter(item => item.score > 0)
-      .sort((a, b) => b.score - a.score);
+      .sort((a, b) => {
+        // Group system commands first, then agent commands when pattern is just '/'
+        if (a.category !== b.category && !queryPattern.replace(/^\//, '').trim()) {
+          return a.category === 'system' ? -1 : 1;
+        }
+        return b.score - a.score;
+      });
 
       filteredCommands = scored;
 
@@ -1019,13 +1044,24 @@
         selectedPopoverIdx = 0;
       }
 
-      slashPopover.innerHTML = scored.map((item, idx) => `
-        <div class="slash-item ${idx === selectedPopoverIdx ? 'selected' : ''}" onclick="applySlash('${item.cmd}')" data-idx="${idx}">
-          <span class="slash-cmd">${highlightCommandMatch(item.cmd, queryPattern)}</span>
-          <span class="slash-desc">${escapeHtml(item.desc)}</span>
-        </div>
-      `).join('');
+      let html = '';
+      let lastCategory = null;
 
+      scored.forEach((item, idx) => {
+        if (lastCategory && lastCategory !== item.category) {
+          html += `<div class="slash-divider"></div>`;
+        }
+        lastCategory = item.category;
+
+        html += `
+          <div class="slash-item ${idx === selectedPopoverIdx ? 'selected' : ''}" onclick="applySlash('${item.cmd}')" data-idx="${idx}">
+            <span class="slash-cmd">${highlightCommandMatch(item.cmd, queryPattern)}</span>
+            <span class="slash-desc">${escapeHtml(item.desc)}</span>
+          </div>
+        `;
+      });
+
+      slashPopover.innerHTML = html;
       slashPopover.classList.add('active');
     }
 
@@ -1065,6 +1101,13 @@
       const match = val.match(/^(\/[a-z]+)(\s+|$)/i);
       if (match) {
         const cmd = match[1].toLowerCase();
+        if (cmd === '/key') {
+          // /key opens API key prompt silently without showing badge
+          promptInput.value = '';
+          slashPopover.classList.remove('active');
+          vscode.postMessage({ type: 'command', command: '/key' });
+          return;
+        }
         if (COMMAND_STYLES[cmd]) {
           setCommandBadge(cmd);
           // Strip the command from the input field so only badge is visible
@@ -1116,6 +1159,7 @@
         submitPrompt();
       }
     });
+
     btnSend.addEventListener('click', () => {
       if (isProcessing) {
         vscode.postMessage({ type: 'abort' });
@@ -1133,6 +1177,12 @@
     });
 
     function applySlash(cmd) {
+      if (cmd === '/key') {
+        promptInput.value = '';
+        slashPopover.classList.remove('active');
+        vscode.postMessage({ type: 'command', command: '/key' });
+        return;
+      }
       setCommandBadge(cmd);
       promptInput.value = '';
       slashPopover.classList.remove('active');
@@ -1141,6 +1191,17 @@
 
     function submitPrompt() {
       const rawText = promptInput.value.trim();
+      const targetCmd = (activeCommand || rawText).toLowerCase();
+
+      if (targetCmd === '/key') {
+        clearCommandBadge();
+        promptInput.value = '';
+        promptInput.style.height = 'auto';
+        slashPopover.classList.remove('active');
+        vscode.postMessage({ type: 'command', command: '/key' });
+        return;
+      }
+
       const text = activeCommand
         ? (rawText ? `${activeCommand} ${rawText}` : activeCommand)
         : rawText;
