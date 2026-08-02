@@ -1,6 +1,6 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -79,6 +79,43 @@ describe('saveSession + loadSession', () => {
     const restored = loadSession(dir);
     assert.ok(restored);
     assert.strictEqual(restored.goal, null);
+  });
+
+  it('strips color codes from display lines before saving', () => {
+    const dir = getDir();
+    const agent = freshAgent(dir);
+    const displayLines = [
+      { text: 'hello', color: '\x1b[1m\x1b[38;2;246;168;36m' },
+      { text: '', color: '\x1b[90m' },
+      'plain \x1b[31mred\x1b[0m text',
+    ];
+
+    saveSession(agent, displayLines);
+    const restored = loadSession(dir);
+
+    assert.deepStrictEqual(restored.displayLines, ['hello', '', 'plain red text']);
+    // The file itself must not contain any escape sequences
+    const raw = JSON.stringify(restored);
+    assert.ok(!raw.includes('\x1b'), 'session file must not contain ANSI escapes');
+  });
+
+  it('cleans color codes from legacy files on load', () => {
+    const dir = getDir();
+    const agent = freshAgent(dir);
+    // Simulate a file saved by an older version: { text, color } objects with escapes
+    const legacy = {
+      cwd: dir,
+      history: [],
+      displayLines: [{ text: 'legacy', color: '\x1b[33m' }],
+      planMode: false,
+      goal: null,
+      tasks: [],
+      savedAt: 0,
+    };
+    writeFileSync(sessionPath(dir), JSON.stringify(legacy), 'utf-8');
+
+    const restored = loadSession(dir);
+    assert.deepStrictEqual(restored.displayLines, ['legacy']);
   });
 });
 

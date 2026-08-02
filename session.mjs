@@ -15,6 +15,30 @@ function sessionsDir(cwd) {
   return dir;
 }
 
+// Matches ANSI escape sequences (colors, cursor moves, etc.).
+const ANSI_RE = /\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[()][0-9A-B]|\x1b[=>#][0-9]?/g;
+
+/** Strip ANSI escape sequences from a string. */
+function stripAnsi(s) {
+  return String(s).replace(ANSI_RE, "");
+}
+
+/**
+ * Normalize display lines to plain text. Lines may arrive as
+ * { text, color } (TUI render state) or plain strings; sessions are
+ * persisted for restoration after a restart, so only the text is kept —
+ * color codes are terminal-only noise and must not land in the file.
+ */
+export function plainLines(lines) {
+  if (!Array.isArray(lines)) return [];
+  const out = [];
+  for (const l of lines) {
+    if (typeof l === "string") out.push(stripAnsi(l));
+    else if (l && typeof l.text === "string") out.push(stripAnsi(l.text));
+  }
+  return out;
+}
+
 /** Encode a path for use as a filename (replace / with _). */
 function pathSlug(cwd) {
   return cwd.replace(/[^a-zA-Z0-9]/g, '_').replace(/^_+/, '') || 'default';
@@ -31,7 +55,7 @@ export function saveSession(agent, displayLines) {
     const data = {
       cwd: agent.cwd,
       history: agent.history,
-      displayLines: displayLines || [],
+      displayLines: plainLines(displayLines),
       planMode: agent.planMode,
       goal: agent.goal,
       tasks: agent.tasks,
@@ -50,7 +74,9 @@ export function loadSession(cwd) {
   if (!existsSync(path)) return null;
   try {
     const raw = readFileSync(path, 'utf-8');
-    return JSON.parse(raw);
+    const data = JSON.parse(raw);
+    if (Array.isArray(data.displayLines)) data.displayLines = plainLines(data.displayLines);
+    return data;
   } catch {
     return null;
   }
@@ -101,14 +127,16 @@ export function switchToSlot(cwd, slot) {
     const src = join(dir, slot);
     if (!existsSync(src)) return null;
     const raw = readFileSync(src, 'utf-8');
+    const data = JSON.parse(raw);
+    if (Array.isArray(data.displayLines)) data.displayLines = plainLines(data.displayLines);
     // Save current session first
     const curPath = sessionPath(cwd);
     if (existsSync(curPath)) {
       archiveCurrent(cwd);
     }
-    // Copy slot to current session path
-    writeFileSync(curPath, raw, 'utf-8');
-    return JSON.parse(raw);
+    // Copy slot to current session path (already sanitized, no color codes)
+    writeFileSync(curPath, JSON.stringify(data, null, 2), 'utf-8');
+    return data;
   } catch {
     return null;
   }
