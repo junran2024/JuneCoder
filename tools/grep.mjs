@@ -76,7 +76,13 @@ export const grepTool = {
         for (const relPath of walkFilesSync(base)) {
           const abs = resolve(base, relPath);
           if (fileMatcher && !fileMatcher(relPath, basename(relPath))) continue;
-          await scanFile(abs, regex, null, results, () => totalMatches++);
+          // A single unreadable file must not abort the whole search —
+          // skip it and keep scanning, like `grep -r 2>/dev/null` did.
+          try {
+            await scanFile(abs, regex, null, results, () => totalMatches++);
+          } catch {
+            // unreadable / deleted mid-scan: skip
+          }
         }
       }
     } catch (err) {
@@ -143,7 +149,7 @@ async function scanFile(abs, regex, fileMatcher, results, countMatch) {
   }
 }
 
-/** Recursively walk files under `dir`, yielding POSIX-style relative paths. Skips IGNORED_DIRS. */
+/** Recursively walk regular files under `dir`, yielding POSIX-style relative paths. Skips IGNORED_DIRS and non-regular entries (symlinks, sockets, etc.). */
 function* walkFilesSync(dir, rel = '') {
   let entries;
   try {
@@ -156,7 +162,7 @@ function* walkFilesSync(dir, rel = '') {
     const relPath = rel ? `${rel}/${e.name}` : e.name;
     if (e.isDirectory()) {
       yield* walkFilesSync(resolve(dir, e.name), relPath);
-    } else {
+    } else if (e.isFile()) {
       yield relPath;
     }
   }
