@@ -19,7 +19,7 @@ No npm packages. TUI rendering, SSE parsing, JSON-RPC, YAML frontmatter — all 
 
 ### Agent loop (`agent.mjs`)
 
-A ReAct loop: each turn rebuilds the tool list, compresses history, calls the LLM, executes tool calls, then loops. Before the agent can declare work done, a guard checks: were files mutated? If yes, and `verify` hasn't run — the checklist auto-injects and the loop continues. No unverified completion. Tools are rebuilt per-turn so dynamically registered tools from MCP connections are immediately visible — no restart required.
+A ReAct loop: each turn rebuilds the tool list, checks if history needs compression, calls the LLM, executes tool calls, then loops. Before the agent can declare work done, a guard checks: were files mutated? If yes, and `verify` hasn't run — the checklist auto-injects and the loop continues. No unverified completion. Tools are rebuilt per-turn so dynamically registered tools from MCP connections are immediately visible — no restart required.
 
 Sub-agents spawn as isolated agent instances (explore, plan, coder roles). Goal mode runs autonomous multi-turn tasks with a turn budget and verifiable criteria. Plan mode locks out write tools for read-only exploration.
 
@@ -33,7 +33,7 @@ The system prompt defines JuneCoder as a terse, precise engineer. It ships with 
 
 ### Tools (`tools/`)
 
-10 built-in tools: `read`, `write`, `edit`, `bash`, `glob`, `grep`, `ls`, `fetch`, `websearch`, `delete`. Each is a self-contained module exporting `{ name, description, parameters, execute }`. Converted to OpenAI function-calling schema on the fly.
+10 built-in tools: `read`, `write`, `edit`, `bash`, `glob`, `grep`, `ls`, `fetch`, `websearch`, `delete`. Each is a self-contained module exporting `{ name, description, parameters, execute }`. `tools.mjs` collects them and converts each to OpenAI function-calling schema on the fly.
 
 Internal meta-tools (`metaTools.mjs`): `task`, `plan`, `verify`, `subagent`, `goal`, `skill`, `memory_search`, `memory_put`.
 
@@ -66,6 +66,14 @@ Two strategies: LLM-based summarization (asks the model to compress old turns in
 ### Provider (`provider.mjs`)
 
 LLM provider abstraction. Currently ships with DeepSeek. Each provider declares its base URL, default model, and capabilities (thinking/reasoning). All OpenAI-compatible APIs work.
+
+### Config provider (`config-provider.mjs`)
+
+Reads and writes `~/.junecoder/config.json`. Resolves API keys from three sources in order: config.json → `~/.junecoder/.env` (auto-migrated on first read) → `DEEPSEEK_API_KEY` env var. Also handles `/key` and `/model` TUI commands for persisting provider settings.
+
+### Config (`config.mjs`)
+
+Agent constants and defaults: max turns (100, 20 for sub-agents, 200 for goals), context window assumptions, token thresholds, verify checklist, and the config directory path (`~/.junecoder`).
 
 ### CLI / TUI (`cli.js`, `tui.mjs`)
 
