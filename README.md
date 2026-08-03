@@ -1,20 +1,35 @@
 # JuneCoder
 
-**Zero-dependency AI coding agent for the terminal.** A ReAct-loop agent with tool-calling, TUI, MCP support, session persistence, long-term memory, and knowledge distillation — all in pure Node.js with no npm dependencies.
+**Zero-dependency AI coding agent for the terminal.** A ReAct-loop agent with tool calling, a full-featured TUI, MCP support, session persistence, long-term memory, and context compression — all in pure Node.js with **zero npm dependencies**. Everything (TUI rendering, SSE parsing, JSON-RPC, token estimation, YAML-like frontmatter) is hand-rolled.
+
+Requires Node.js ≥ 21.7.
 
 ```bash
 npm install -g junecoder
 junecoder
 ```
 
-You need a DeepSeek API key. The TUI will prompt you on first run, and you can change it anytime with `/key`.
+You need a DeepSeek API key. On first run the TUI prompts you to paste one, and you can change it anytime with `/key` or switch models with `/model`.
 
 ---
 
 ## Features
 
 ### Terminal UI
-A full-featured terminal interface built from scratch with raw ANSI sequences. Scrollable conversation, task panel, permission prompts, streaming token output, and CJK character support.
+A full-featured terminal interface built from scratch with raw ANSI sequences — no ncurses, no readline dependency. Scrollable conversation, streaming tokens and reasoning, a task panel, permission prompts, token statistics, and full CJK character support.
+
+**Keyboard shortcuts:**
+- `Enter` — send message / confirm prompt
+- `Option+Enter` / `Shift+Enter` / paste — newline in input
+- `Ctrl+C` — abort current run (quit when idle)
+- `Ctrl+D` — quit (when input is empty)
+- `Ctrl+L` — redraw screen
+- `PageUp` / `PageDown` — scroll conversation
+- `↑` / `↓` — input history / select options
+- `y` / `a` / `n` — allow / allow+auto-approve / deny a permission prompt
+
+**Slash commands:**
+`/help` `/goal` `/plan` `/auto` `/key` `/model` `/sessions` `/clear` `/tasks` `/stats` `/new` `/quit`
 
 ### Tools
 The agent has access to 10 base tools for file and system operations:
@@ -25,9 +40,9 @@ The agent has access to 10 base tools for file and system operations:
 | `write` | Write content to a file, creating parent directories |
 | `edit` | Exact string replacement in files |
 | `bash` | Execute shell commands |
-| `delete` | Delete files with git-tracked safety guard |
-| `glob` | Find files by glob pattern |
-| `grep` | Search file contents with regex |
+| `delete` | Delete files with a git-tracked safety guard |
+| `glob` | Find files by glob pattern (incl. `**`, `?`, `[...]`, `{a,b}`) |
+| `grep` | Search file contents with regex (streaming, unicode-aware) |
 | `ls` | List directory contents |
 | `fetch` | Fetch URL content as text |
 | `websearch` | Search the web via Bing |
@@ -39,27 +54,46 @@ Built-in agent introspection and control:
 |------|-------------|
 | `task` | Plan and track multi-step tasks |
 | `plan` | Enter/exit read-only plan mode |
-| `goal` | Manage long-running autonomous goals |
+| `goal` | Manage long-running autonomous goals (set/complete/blocked) |
 | `verify` | Pre-completion self-check (diff, tests, checklist) |
 | `subagent` | Spawn isolated sub-agents for parallel work |
 | `skill` | Load project-specific skill workflows |
 | `memory_search` | Search long-term memory |
 | `memory_put` | Save knowledge to long-term memory |
+| `mcp_connect` | Connect to an MCP server or project |
+| `mcp_disconnect` | Disconnect an MCP server |
+| `mcp_list` | List connected MCP servers |
+
+### Agent Loop Safeguards
+- **Permission system** — every non-readonly tool call requires interactive approval (`y`/`a`/`n`), unless auto-approve is on (`/auto`).
+- **Plan mode** — read-only tools only; toggle with `/plan`.
+- **Verify injection** — after code changes, a self-review checklist is injected before the agent may finish.
+- **Stagnation detection** — the loop detects repeated identical tool calls and nudges the agent to change strategy.
+- **Goal mode** — autonomous long-running goals with a turn budget, progress reminders, and explicit completion criteria (`/goal`).
+- **Sub-agents** — nested isolated agents (`explore` / `plan` / `coder`) with their own depth-limited turn budget.
 
 ### MCP (Model Context Protocol)
-Connect to MCP servers via JSON-RPC over stdio. External tools are registered with an `mcp_<server>_` prefix and available immediately.
+Connect to MCP servers via JSON-RPC over **stdio** (spawn) or **HTTP** (Streamable transport). External tools are registered with an `mcp_<server>_` prefix and available immediately. Pre-configured server groups live in `~/.junecoder/mcp/*.json` and are advertised in the system prompt (name + description only, no auth), ready for one-shot `mcp_connect(project="...")`.
 
 ### Session Persistence
-Conversations survive restarts. Sessions are automatically saved to `~/.junecoder/sessions/`. Switch between session slots, archive old ones.
+Conversations survive restarts. Sessions are saved automatically to `~/.junecoder/sessions/` (every 5 turns and on exit), keyed by project directory. Use `/sessions` to list archived slots and switch between them; `/clear` and `/new` archive the current session before resetting. Persisted lines store semantic roles, never raw ANSI codes, so restored sessions render identically.
 
 ### Long-Term Memory
-File-based JSON memory store with keyword search. The agent remembers conventions, decisions, and patterns across sessions. Memory entries can be saved manually or extracted from conversations via the `/distill` command.
+File-based JSON memory store at `~/.junecoder/memory/` with keyword search (Chinese and English tokenization). The agent remembers conventions, decisions, and patterns across sessions via `memory_search` / `memory_put`, and files it writes are re-indexed automatically.
 
 ### Context Compression
-When the context window fills up, the agent compresses history. An LLM-based summarization layer is planned; currently a deterministic fallback truncates old messages while preserving system prompts and recent context.
+When the conversation approaches the context window, the agent compresses history: an **LLM-based summarization** pass condenses older turns while preserving recent context and system prompts, falling back to deterministic truncation if summarization fails repeatedly.
 
 ### Skills
-Project-specific skill files in `.junecoder/skills/*.md` with YAML-like frontmatter. The agent can load and activate skills on demand.
+Reusable workflows stored as markdown with optional YAML-like frontmatter (`name`, `description`). Loaded from `~/.junecoder/skills/` (global) and `.junecoder/skills/` in your project (project overrides global). Two layouts are supported: flat `skills/<name>.md` or `skills/<name>/SKILL.md` with optional `references/`.
+
+### Provider Registry
+Provider-specific defaults (base URL, model, thinking mode) are declared in one registry. Currently ships with DeepSeek (`deepseek-v4-pro` default, `deepseek-v4-flash`), SSE streaming, and thinking/reasoning support. Switch models at runtime with `/model`.
+
+### Project Instructions
+Any of these files are picked up and injected into the system prompt (global first, then project — combined and truncated at 32k chars):
+- `~/.junecoder/AGENTS.md` (global)
+- `AGENTS.md`, `PROJECT_RULES.md`, `.cursorrules`, `.windsurfrules` (project)
 
 ---
 
@@ -73,48 +107,53 @@ junecoder ./my-project     # Start in a specific directory
 junecoder open ./my-project
 ```
 
-**Keyboard shortcuts:**
-- `Enter` — send message
-- `Option+Enter` — newline in input
-- `Ctrl+C` — abort / quit
-- `/` — slash commands (help, clear, session, etc.)
-- `↑` / `↓` — navigate history
-
 ### Single-Shot Mode
 
 ```bash
 junecoder "fix the lint errors in src/"
 junecoder -p "add unit tests for utils.js"
-junecoder --dir ./my-project "explain this codebase"
+junecoder -d ./my-project "explain this codebase"
 ```
+
+Single-shot mode streams tokens to stdout and exits when done.
 
 ### CLI Options
 
 ```
 junecoder [directory]               Start TUI
+junecoder open [directory]          Start TUI in directory
 junecoder "your prompt"             Single-shot (non-TUI)
-junecoder -d <path> [prompt]        Set working directory
-junecoder -p <prompt>               Single-shot mode
+junecoder -d, --dir <path> [prompt] Set working directory
+junecoder -p, --prompt <text>       Single-shot mode
+junecoder -t, --tui                 Force TUI mode
 junecoder -h, --help                Show help
 junecoder -v, --version             Show version
 ```
 
----
+### Configuration & API Key
 
-### Project Instructions
+The API key lives in `~/.junecoder/config.json`, managed by the TUI. Resolution order:
 
-Place any of these files in your project root for custom agent instructions:
-- `AGENTS.md`
+1. `~/.junecoder/config.json` — providers array, set up on first run or via `/key`
+2. `~/.junecoder/.env` — legacy `DEEPSEEK_API_KEY`, auto-migrated into config.json on first read
+3. `DEEPSEEK_API_KEY` environment variable
 
-Also read from `~/.junecoder/AGENTS.md` for global instructions.
+```json
+{
+  "providers": [{ "name": "deepseek", "apiKey": "sk-..." }],
+  "activeProvider": "deepseek"
+}
+```
 
 ---
 
 ## Skills
 
-Create `.junecoder/skills/` in your project with markdown files:
+Create a skills directory with markdown files:
 
 ```markdown
+# ~/.junecoder/skills/ or .junecoder/skills/ in your project
+
 ---
 name: my-skill
 description: Does something useful
@@ -125,66 +164,49 @@ description: Does something useful
 Skill content here — prompts, workflows, conventions...
 ```
 
-The agent loads skills automatically and can activate them with the `skill` meta-tool.
+The agent lists available skills in its system prompt and activates them on demand with the `skill` meta-tool.
 
 ---
 
 ## Architecture
 
 ```
-agent.mjs         — ReAct loop, history, system prompt, workdir listing
-executor.mjs      — Two-phase tool execution (permission → parallel/serial)
-provider.mjs      — DeepSeek LLM provider with SSE streaming
-context.mjs       — Token estimation + context compression
-memory.mjs        — File-based long-term memory store
-session.mjs       — Conversation persistence
-mcp.mjs           — MCP client (JSON-RPC over stdio)
-distill.mjs       — Knowledge extraction from conversations
-skills.mjs        — Project skill loading
-config.mjs        — Configuration + .env loading
-prompt.md         — Agent system prompt (rules, worldview, values)
-cli.js            — CLI entry point
-tui.mjs           — Terminal UI (raw ANSI)
-tools.mjs         — Tools barrel (re-exports all tools)
-metaTools.mjs     — Built-in meta tools (task, plan, goal, etc.)
+cli.js              — CLI entry point: arg parsing, TUI vs single-shot dispatch
+agent.mjs           — ReAct loop: turns, compression, verify injection, stagnation detection
+executor.mjs        — Two-phase tool execution (permission → parallel/serial)
+provider.mjs        — LLM provider: DeepSeek registry, SSE streaming, thinking mode
+config.mjs          — Agent constants and defaults (turn budgets, thresholds)
+config-provider.mjs — Provider config persistence (~/.junecoder/config.json)
+context.mjs         — Token estimation + LLM summarization + fallback truncation
+memory.mjs          — File-based long-term memory store (keyword search)
+session.mjs         — Conversation persistence, session slots, archiving
+mcp.mjs             — MCP client (JSON-RPC over stdio + HTTP Streamable)
+skills.mjs          — Skill loading (global + project, flat + subdirectory)
+prompt.mjs          — System prompt, project instructions, goal preamble
+tools.mjs           — Tool barrel: schema conversion + base tool list
+metaTools.mjs       — Meta tools (task, plan, goal, verify, memory, MCP, subagent)
+tui.mjs             — Terminal UI (raw ANSI, CJK-aware, streaming)
 tools/
-  index.mjs       — Tool schema conversion + base tool list
-  read.mjs        — File reading
-  write.mjs       — File writing
-  edit.mjs        — String replacement editing
-  bash.mjs        — Shell command execution
-  delete.mjs      — File deletion
-  glob.mjs        — File globbing
-  grep.mjs        — Content search
-  ls.mjs          — Directory listing
-  fetch.mjs       — URL fetching
-  websearch.mjs   — Web search (Bing)
+  read.mjs          — File reading
+  write.mjs         — File writing
+  edit.mjs          — String replacement editing
+  bash.mjs          — Shell command execution
+  delete.mjs        — File deletion
+  glob.mjs          — File globbing
+  grep.mjs          — Content search
+  ls.mjs            — Directory listing
+  fetch.mjs         — URL fetching
+  websearch.mjs     — Web search (Bing)
+tests/              — node --test suite (run with `npm test`)
 ```
 
-Zero npm dependencies. Everything — TUI rendering, SSE parsing, YAML-like frontmatter, token estimation — is hand-rolled.
+Zero npm dependencies — everything from the TUI renderer to the SSE parser and MCP client is hand-rolled in plain Node.js.
 
 ---
 
-## Changelog
+## Development
 
-### 1.1.4
-
-- **Removed `config.json` support and project-level `.env`.** API key now lives in exactly one file: `~/.junecoder/.env`, managed by the `/key` command. No more silent priority conflicts between multiple config sources.
-- **Prompt hardening against path fabrication.** Added explicit ban on fabricating file paths — agent must use `ls`/`glob` to verify paths before referencing them. Added working directory constraint. ([prompt.md](prompt.md))
-
-### 1.1.3
-
-- **Removed checkpoint module.** The git-stash checkpoint mechanism was causing files to disappear between turns (stash reverts working tree to HEAD). The guard added in 1.1.0 prevented data loss but also made checkpoints non-functional. Since the rewind feature was never implemented, the entire module was dead code with a dangerous history. ([#6bd7421](https://github.com/junranli/JuneCoder-github/commit/6bd7421))
-
-### 1.1.2
-
-- **Security:** Replaced `cat > file` shell execution with `writeFileSync` in `write` and `edit` tools. Removes shell injection risk and `/bin/cat` dependency. The `cat > file` pattern was a workaround for a bug that was actually in checkpoint/git stash (fixed earlier). ([#e16d458](https://github.com/junranli/JuneCoder-github/commit/e16d458))
-
-### 1.1.1
-
-- **Prompt improvements:** Added safety rule (no destructive commands without confirmation), cross-reference between "minimal changes" and "entire project is my code" values, "Human Has the Final Say" principle for when the agent's advice is overruled. Added version marker to prompt.md. ([#c803f7b](https://github.com/junranli/JuneCoder-github/commit/c803f7b))
-
-### 1.1.0
-
-- **System prompt extracted** from agent.mjs into standalone `prompt.md`. Easier to iterate on agent behavior without touching code.
-- First public release with full tool set, TUI, MCP support, session persistence, and memory.
+```bash
+npm test            # run the test suite (node --test)
+node cli.js -h      # run locally without installing
+```
