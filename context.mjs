@@ -5,35 +5,55 @@
  * Two strategies:
  *   1. compressIfNeeded — LLM-based summarization
  *   2. compressFallback — deterministic truncation when LLM summarization fails
+ *
+ * Token counting uses agent._lastTotalTokens (real API usage data, set on every
+ * LLM call). The char/4 heuristic (estimateTokens) is only a fallback for the
+ * brief window before the first API response arrives.
  */
 
 /** How many consecutive compression failures before triggering fallback. */
 export const COMPRESS_FAILURE_LIMIT = 3;
 
-/** Rough token estimate: ~4 characters per token for English text. */
-const CHARS_PER_TOKEN = 4;
-
-// ─── Token estimation ─────────────────────────────────────────────────────────
+// ─── Entry point (called from agent loop each turn) ───────────────────────────
 
 /**
- * Estimate token count from a message array.
- * Uses char/4 heuristic — fast, deterministic, good enough for threshold checks.
+ * Full compression check: try LLM summarization, fall back to truncation.
+ * Called once per turn from the main loop.
+ *
+ * @param {object} agent
+ * @param {number} threshold - token threshold
+ * @param {object} [cb] - callbacks (cb.onCompress for TUI notification)
+ * @returns {Promise<boolean>} true if any compression action was taken
  */
-export function estimateTokens(messages) {
-  if (!messages || messages.length === 0) return 0;
-  let chars = 0;
-  for (const msg of messages) {
-    if (!msg) continue;
-    chars += String(msg.content || '').length;
-    if (msg.tool_calls) chars += JSON.stringify(msg.tool_calls).length;
-    if (msg.tool_call_id) chars += String(msg.tool_call_id).length;
-    if (msg.name) chars += String(msg.name).length;
-    if (msg.reasoning_content) chars += String(msg.reasoning_content).length;
+export async function checkAndCompress(agent, threshold, cb) {
+  // Don't compress if threshold is 0 (disabled)
+  if (!threshold || threshold <= 0) return false;
+
+  // Primary: real API token count. Fallback: char/4 estimate (first turn only).
+  const tokens = agent._lastTotalTokens ?? estimateTokens(agent.history);
+  if (tokens < threshold) {
+    agent._compressFailures = 0;
+    return false;
   }
-  return Math.ceil(chars / CHARS_PER_TOKEN);
+
+  // Try LLM-based compression
+  const compressed = await compressIfNeeded(agent, threshold, cb);
+  if (compressed) return true;
+
+  // LLM compression didn't happen — track failures
+  agent._compressFailures = (agent._compressFailures || 0) + 1;
+
+  // If we've failed too many times, fall back to deterministic truncation
+  if (agent._compressFailures >= COMPRESS_FAILURE_LIMIT) {
+    compressFallback(agent);
+    if (cb && cb.onCompress) cb.onCompress('fallback');
+    return true;
+  }
+
+  return false;
 }
 
-// ─── LLM-based compression ────────────────────────────────────────────────────
+// ─── Primary strategy: LLM-based summarization ────────────────────────────────
 
 /**
  * Summarize a slice of conversation messages into a concise English paragraph.
@@ -126,7 +146,7 @@ export async function compressIfNeeded(agent, threshold, cb) {
   }
 }
 
-// ─── Deterministic fallback truncation ────────────────────────────────────────
+// ─── Fallback strategy: deterministic truncation ──────────────────────────────
 
 /**
  * Deterministic fallback: truncate old messages, keep system + recent context.
@@ -184,43 +204,30 @@ export function compressFallback(agent, keepRecent = 10) {
   agent._compressFailures = 0;
 }
 
-// ─── Convenience: check + fallback ────────────────────────────────────────────
+// ─── Token counting fallback ──────────────────────────────────────────────────
 
 /**
- * Full compression check: try LLM summarization, fall back to truncation.
- * Called once per turn from the main loop.
+ * Rough char/4 heuristic — fallback only.
  *
- * @param {object} agent
- * @param {number} threshold - token threshold
- * @param {object} [cb] - callbacks (cb.onCompress for TUI notification)
- * @returns {Promise<boolean>} true if any compression action was taken
+ * The primary token count comes from agent._lastTotalTokens (real API usage data,
+ * set on every LLM call).  This heuristic is only used before the first API call
+ * when _lastTotalTokens is still undefined.
  */
-export async function checkAndCompress(agent, threshold, cb) {
-  // Don't compress if threshold is 0 (disabled)
-  if (!threshold || threshold <= 0) return false;
+const CHARS_PER_TOKEN = 4;
 
-  // Under threshold: nothing to do. This is NOT a compression failure —
-  // reset the counter so the fallback only fires after real over-threshold
-  // failures, not every COMPRESS_FAILURE_LIMIT turns.
-  const tokens = agent._lastTotalTokens ?? estimateTokens(agent.history);
-  if (tokens < threshold) {
-    agent._compressFailures = 0;
-    return false;
+/**
+ * Char/4 token estimate — fallback for when the API hasn't returned usage yet.
+ */
+export function estimateTokens(messages) {
+  if (!messages || messages.length === 0) return 0;
+  let chars = 0;
+  for (const msg of messages) {
+    if (!msg) continue;
+    chars += String(msg.content || '').length;
+    if (msg.tool_calls) chars += JSON.stringify(msg.tool_calls).length;
+    if (msg.tool_call_id) chars += String(msg.tool_call_id).length;
+    if (msg.name) chars += String(msg.name).length;
+    if (msg.reasoning_content) chars += String(msg.reasoning_content).length;
   }
-
-  // Try LLM-based compression
-  const compressed = await compressIfNeeded(agent, threshold, cb);
-  if (compressed) return true;
-
-  // LLM compression didn't happen — track failures
-  agent._compressFailures = (agent._compressFailures || 0) + 1;
-
-  // If we've failed too many times, fall back to deterministic truncation
-  if (agent._compressFailures >= COMPRESS_FAILURE_LIMIT) {
-    compressFallback(agent);
-    if (cb && cb.onCompress) cb.onCompress('fallback');
-    return true;
-  }
-
-  return false;
+  return Math.ceil(chars / CHARS_PER_TOKEN);
 }
