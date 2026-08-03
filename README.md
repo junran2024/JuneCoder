@@ -23,6 +23,8 @@ A ReAct loop: each turn rebuilds the tool list, compresses history, calls the LL
 
 Sub-agents spawn as isolated agent instances (explore, plan, coder roles). Goal mode runs autonomous multi-turn tasks with a turn budget and verifiable criteria. Plan mode locks out write tools for read-only exploration.
 
+**You can define your own prompt** — edit `agent.mjs` directly. 
+
 ### Prompt (`prompt.mjs`)
 
 The system prompt defines JuneCoder as a terse, precise engineer. It ships with a full worldview ("programming is collaborative labor"), ethos ("responsible engineer, not office equipment"), and value hierarchy ("correctness takes absolute priority"). At build time it injects available tools, skills, and MCP project listings. 

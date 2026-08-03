@@ -32,7 +32,7 @@ const PASTE_TRUNCATE_LINES = 50;
 const PASTE_PREVIEW_LINES = 80;
 const C = {
   user: yellow, assistant: orange, text: ansi.fg(7),
-  reason: `${ESC}[2m${ESC}[3m`, tool: orange,
+  reason: `${ESC}[38;5;248m${ESC}[2m${ESC}[3m`, tool: orange,
   error: ansi.fg(1), dim: ansi.gray, warn: ansi.fg(3),
 };
 
