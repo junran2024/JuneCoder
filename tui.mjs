@@ -30,9 +30,19 @@ const yellow = `${ESC}[38;2;253;224;71m`;
 const pasteYellow = `${ESC}[38;2;240;220;130m`;
 const PASTE_TRUNCATE_LINES = 50;
 const PASTE_PREVIEW_LINES = 80;
+
+// Detect dark terminal background via COLORFGBG (format: "<fg>;<bg>").
+// Dark backgrounds (index 0–7) need an explicit lighter foreground for
+// reasoning text; light backgrounds (8–15) use the terminal's own dim.
+const _cfbg = process.env.COLORFGBG;
+const _isDarkBg = _cfbg ? parseInt((_cfbg.split(";")[1] ?? ""), 10) <= 7 : true;
+
 const C = {
   user: yellow, assistant: orange, text: ansi.fg(7),
-  reason: `${ESC}[38;5;248m${ESC}[2m${ESC}[3m`, tool: orange,
+  reason: _isDarkBg
+    ? `${ESC}[38;5;250m${ESC}[2m${ESC}[3m`
+    : `${ESC}[2m${ESC}[3m`,
+  tool: orange,
   error: ansi.fg(1), dim: ansi.gray, warn: ansi.fg(3),
 };
 
