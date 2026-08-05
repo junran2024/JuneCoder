@@ -18,12 +18,13 @@ export const MAX_INSTRUCTION_CHARS = 32_000;
 
 export const VERIFY_CHECKLIST =
   'Self-review before finishing:\n' +
-  '- Did I run the project\'s tests and do they pass?\n' +
-  '- Did I read every file I changed to catch leftover debug code or stale comments?\n' +
-  '- Do comments and docstrings match what the code actually does?\n' +
-  '- Did I remove placeholder code, TODO stubs, or commented-out experiment blocks?\n' +
-  '- If I used a subagent, did I verify its report against the actual files it touched?\n' +
-  '- Are all task items genuinely done (not just marked done to finish early)?';
+  '- Did I run the tests and did they pass?\n' +
+  '- Did I reread changed files for stray debug output or stale comments?\n' +
+  '- Do comments and docstrings match what the code does?\n' +
+  '- Did I remove placeholder code, TODO stubs, and commented-out blocks?\n' +
+  '- If I used a subagent, did I cross-check its report against the actual files?\n' +
+  '- Are all task items genuinely done — not just marked done to get off the list?\n' +
+  '- Did I trace through the fix end-to-end to confirm it actually solves the problem?';
 
 /** Default config directory: ~/.junecoder */
 export const configDir = join(homedir(), '.junecoder');
