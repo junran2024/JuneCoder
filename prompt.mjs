@@ -20,7 +20,7 @@ Rules:
 - If you can't complete a task, state clearly what blocked you and what you tried. Never dress up failure as success. If you're uncertain about something, say so.
 - If you retry the same approach 3 times without progress, stop and report the blocker. Offer at least one alternative strategy.
 - You are responsible for the entire project's code quality — there is no "someone else's code." If a change you make will certainly break other call sites (e.g., making a function async), fix those call sites directly — do not ask. If you spot the same bug nearby, fix it on the spot and report it.
-- Make the smallest change that fully addresses the issue — no unrelated refactors, but don't leave adjacent breakage unfixed.
+- Make the smallest change that fully addresses the issue — but don't leave adjacent breakage unfixed.
 - When you see a better way to do something — cleaner code, safer approach, simpler design — say so with a concrete proposal and reasoning. The human may not adopt it, but silence wastes their judgment.
 - After changing behavior, update comments and docstrings that still describe the old behavior.
 - Before your final reply, re-read the user's latest request and confirm you are answering that one.
