@@ -131,6 +131,7 @@ export async function startTUI(agent, opts = {}) {
     question: null, goalMode: false, goal: agent.goal ? { objective: agent.goal.objective, turn: agent.goal.turnsUsed || 0, max: agent.config?.agent?.goalTurns || 200 } : null, tasks: agent.tasks ?? [], tokens: { prompt: 0, completion: 0, total: 0, cacheHit: 0, cacheMiss: 0, totalPrompt: 0, totalCompletion: 0, totalTotal: 0 },
     reasoning: "", toolStreams: {},
     subOutput: "", currentSub: null, currentTool: null, processingStarted: 0, status: "Ready",
+    _nextBlockId: 0, _copyBlocks: new Map(), _copyZones: [],
   };
   if (state.tasks.length > 0 && state.tasks.every(t => t.status === "done")) state.tasks = [];
 
@@ -142,9 +143,20 @@ export async function startTUI(agent, opts = {}) {
 
   process.stdin.on("data", (chunk) => {
     let text = mousePending + chunk.toString("utf8"); mousePending = "";
-    for (const m of text.matchAll(/\x1b\[<(\d+);\d+;\d+([Mm])/g)) {
-      if (Number(m[1]) === 64) state.scroll += 3;
-      else if (Number(m[1]) === 65) state.scroll = Math.max(0, state.scroll - 3);
+    for (const m of text.matchAll(/\x1b\[<(\d+);(\d+);(\d+)([Mm])/g)) {
+      const btn = Number(m[1]), col = Number(m[2]), row = Number(m[3]), act = m[4];
+      if (btn === 64) state.scroll += 3;
+      else if (btn === 65) state.scroll = Math.max(0, state.scroll - 3);
+      else if (btn === 0 && act === "M") {
+        for (const z of state._copyZones) {
+          if (row === z.row && col >= z.col - 2 && col <= z.col) {
+            const src = state.lines.find(l => l.blockId === z.blockId);
+            const txt = src ? src.text : state._copyBlocks.get(z.blockId);
+            if (txt) process.stdout.write(`\x1b]52;c;${Buffer.from(txt).toString("base64")}\x07`);
+            break;
+          }
+        }
+      }
     }
     text = text.replace(/\x1b\[<\d+;\d+;\d+[Mm]/g, "");
     const tail = text.match(/\x1b\[<[\d;]*$/);
@@ -167,8 +179,13 @@ export async function startTUI(agent, opts = {}) {
 
   const fmtK = n => n >= 10000 ? Math.round(n/1000) + "k" : n >= 1000 ? (n/1000).toFixed(1) + "k" : String(n);
 
-  const pushLine = (text, role = "text") => {
-    state.lines.push({ text, role });
+  const pushLine = (text, role = "text", copyable = false) => {
+    const line = { text, role };
+    if (copyable) {
+      line.blockId = ++state._nextBlockId;
+      state._copyBlocks.set(line.blockId, text);
+    }
+    state.lines.push(line);
     if (state.lines.length > 5000) state.lines.splice(0, 1000);
     render();
   };
@@ -188,6 +205,7 @@ export async function startTUI(agent, opts = {}) {
     const cols = process.stdout.columns || 80;
     const rows = process.stdout.rows || 24;
     const W = Math.max(20, cols - 1);
+    state._copyZones = [];
 
     const layout = layoutInput(state.input, state.cursor, W - 6);
     const MAX_INPUT_LINES = 10;
@@ -222,13 +240,28 @@ export async function startTUI(agent, opts = {}) {
     const convH = Math.max(1, rows - 1 - inputBoxH - 1 - taskPanelH - goalH - subOutLen - permPreviewLen);
 
     const convLines = [];
-    for (const l of state.lines) {
-      for (const wrapped of wrapText(sanitizeDisplay(l.text), W)) convLines.push({ text: wrapped, color: ROLES[l.role] || C.text });
+    for (let si = 0; si < state.lines.length; si++) {
+      const l = state.lines[si];
+      for (const wrapped of wrapText(sanitizeDisplay(l.text), W)) convLines.push({ text: wrapped, color: ROLES[l.role] || C.text, _si: si });
     }
     if (state.reasoning) { for (const wrapped of wrapText(sanitizeDisplay(state.reasoning), W)) convLines.push({ text: wrapped, color: C.reason }); }
     if (state.streaming) { for (const wrapped of wrapText(sanitizeDisplay(state.streaming), W)) convLines.push({ text: wrapped, color: C.text }); }
     const allStreams = Object.values(state.toolStreams).join("");
     if (allStreams) { const tail = sanitizeDisplay(allStreams.slice(-4000)); for (const wrapped of wrapText(tail, W)) convLines.push({ text: wrapped, color: C.dim }); }
+
+    // Mark last wrapped line of each copyable block with ⧉ icon
+    for (let ci = 0; ci < convLines.length; ci++) {
+      const si = convLines[ci]._si;
+      if (si == null) continue;
+      const src = state.lines[si];
+      if (!src.blockId) continue;
+      // Find the last convLine from the same source line
+      let last = ci;
+      while (last + 1 < convLines.length && convLines[last + 1]._si === si) last++;
+      convLines[last].hasCopy = true;
+      convLines[last].blockId = src.blockId;
+      ci = last;
+    }
 
     const maxScroll = Math.max(0, convLines.length - convH);
     state.scroll = Math.min(state.scroll, maxScroll);
@@ -238,7 +271,16 @@ export async function startTUI(agent, opts = {}) {
 
     const pad = convH - visible.length;
     for (let i = 0; i < pad; i++) out.push(ansi.clearLine);
-    for (const l of visible) out.push(`${l.color}${l.text}${ansi.reset}${ansi.clearLine}`);
+    for (let vi = 0; vi < visible.length; vi++) {
+      const l = visible[vi];
+      let text = l.text;
+      if (l.hasCopy) {
+        const icon = " \u29c9";
+        text = padByWidth(sliceByWidth(l.text, W - stringWidth(icon)), W - stringWidth(icon)) + icon;
+        state._copyZones.push({ row: 1 + pad + vi + 1, col: W, blockId: l.blockId });
+      }
+      out.push(`${l.color}${text}${ansi.reset}${ansi.clearLine}`);
+    }
 
     for (const t of visibleTasks) {
       const mark = t.status === "done" ? "\u2713" : t.status === "in_progress" ? "\u25b6" : "\u25cb";
@@ -552,8 +594,8 @@ export async function startTUI(agent, opts = {}) {
     state.processingStarted = Date.now(); state.controller = new AbortController();
     const ticker = setInterval(() => { if (state.processing) render(); }, 1000); render();
     const callbacks = {
-      onToken: t => { ensureAssistantLabel(); if (!state.streaming && state.reasoning) { pushLine(state.reasoning, "reason"); state.reasoning = ''; } state.streaming += t; scheduleRender(); },
-      onReasoning: t => { ensureAssistantLabel(); if (state.streaming) { pushLine(state.streaming, "text"); state.streaming = ''; } state.reasoning += t; scheduleRender(); },
+      onToken: t => { ensureAssistantLabel(); if (!state.streaming && state.reasoning) { pushLine(state.reasoning, "reason", true); state.reasoning = ''; } state.streaming += t; scheduleRender(); },
+      onReasoning: t => { ensureAssistantLabel(); if (state.streaming) { pushLine(state.streaming, "text", true); state.streaming = ''; } state.reasoning += t; scheduleRender(); },
       onToolCall: (name, args) => { flushStream(); ensureAssistantLabel(); state.currentTool = name; const summary = summarize(args); pushLine("  [tool] " + name + (summary && summary !== '{}' ? " " + summary : ""), "tool"); },
       onToolResult: (name, output, error) => { state.currentTool = null; const text = error ? "Error: " + error : (output || ""); const stream = state.toolStreams[name]; if (stream) { const tail = stream.trimEnd().slice(-4000); if (tail) pushLine(tail, "dim"); delete state.toolStreams[name]; } pushLine("  [done] " + name + " \u2192 " + sliceByWidth(sanitizeDisplay(text.split("\n")[0]), 100), "dim"); },
       onToolOutput: (name, output, error) => { state.toolStreams[name] = (state.toolStreams[name] ?? "") + (error ? "Error: " + error : (output || "")); scheduleRender(); },
@@ -580,7 +622,7 @@ export async function startTUI(agent, opts = {}) {
     try { saveSession(agent, state.lines); } catch { /* final save best-effort — render must run regardless */ } render();
   }
 
-  function flushStream() { if (state.reasoning) { pushLine(state.reasoning, "reason"); state.reasoning = ""; } if (state.streaming) { pushLine(state.streaming, "text"); state.streaming = ""; } }
+  function flushStream() { if (state.reasoning) { pushLine(state.reasoning, "reason", true); state.reasoning = ""; } if (state.streaming) { pushLine(state.streaming, "text", true); state.streaming = ""; } }
   function askPermission(name, args) { if (agent.autoApprove) { pushLine("  [auto] " + name + " " + summarize(args), "warn"); return Promise.resolve({ allowed: true }); } state.permissionPreview = formatPermission(name, args); return new Promise(resolve => { state.permission = { name, args, resolve, reasonMode: false }; state.status = "Waiting: " + name; render(); }); }
   function askQuestion(text) { if (state.question) return Promise.resolve("(already waiting)"); pushLabel("\u276f Question", "labelTool"); for (const line of text.split("\n")) pushLine("  " + line, "text"); return new Promise(resolve => { state.question = { text, options: [], resolve }; state.status = "Waiting..."; render(); }); }
 
@@ -660,8 +702,8 @@ export async function startTUI(agent, opts = {}) {
         render();
         break;
       }
-      case "clear": archiveCurrent(agent.cwd); agent.history = []; state.lines = []; state.streaming = ""; state.reasoning = ""; state.tasks = []; agent.tasks = []; agent.goal = null; state.goal = null; state.scroll = 0; pushLine("Cleared (archived).", "warn"); break;
-      case "new": archiveCurrent(agent.cwd); agent.history = []; state.lines = []; state.streaming = ""; state.reasoning = ""; state.toolStreams = {}; state.tasks = []; agent.tasks = []; agent.goal = null; state.goal = null; state.scroll = 0; state.tokens = { prompt: 0, completion: 0, total: 0, cacheHit: 0, cacheMiss: 0, totalPrompt: 0, totalCompletion: 0, totalTotal: 0 }; delete agent._lastTotalTokens; pushLine("New session.", "tool"); break;
+      case "clear": archiveCurrent(agent.cwd); agent.history = []; state.lines = []; state.streaming = ""; state.reasoning = ""; state.tasks = []; agent.tasks = []; agent.goal = null; state.goal = null; state.scroll = 0; state._copyBlocks.clear(); state._nextBlockId = 0; pushLine("Cleared (archived).", "warn"); break;
+      case "new": archiveCurrent(agent.cwd); agent.history = []; state.lines = []; state.streaming = ""; state.reasoning = ""; state.toolStreams = {}; state.tasks = []; agent.tasks = []; agent.goal = null; state.goal = null; state.scroll = 0; state.tokens = { prompt: 0, completion: 0, total: 0, cacheHit: 0, cacheMiss: 0, totalPrompt: 0, totalCompletion: 0, totalTotal: 0 }; delete agent._lastTotalTokens; state._copyBlocks.clear(); state._nextBlockId = 0; pushLine("New session.", "tool"); break;
       case "tasks": if (state.tasks.length === 0) pushLine("No tasks.", "dim"); else for (const t of state.tasks) pushLine("  " + (t.status === "done" ? "\u2713" : t.status === "in_progress" ? "\u25b6" : "\u25cb") + " " + t.title, "dim"); break;
       case "stats": pushLine("Last call: \u2191" + fmtK(state.tokens.prompt) + " \u2193" + fmtK(state.tokens.completion) + " | Session total: \u2191" + fmtK(state.tokens.totalPrompt) + " \u2193" + fmtK(state.tokens.totalCompletion) + " \u2211" + fmtK(state.tokens.totalTotal) + " | History: " + agent.history.length + " msgs" + (agent._lastTotalTokens ? " (" + fmtK(agent._lastTotalTokens) + " t)" : "") + " | Lines: " + state.lines.length, "dim"); break;
       case "quit": case "exit": cleanup(); process.exit(0); return;
