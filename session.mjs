@@ -131,7 +131,8 @@ export function listSlots(cwd) {
   try {
     const dir = sessionsDir();
     const prefix = pathSlug(cwd);
-    const files = readdirSync(dir).filter(f => f.startsWith(prefix) && f.endsWith('.json'));
+    // Only list archived slots (with _timestamp suffix), not the active session file
+    const files = readdirSync(dir).filter(f => f.startsWith(prefix) && /_\d+\.json$/.test(f));
     return files.map(f => {
       const match = f.match(/_(\d+)\.json$/);
       const ts = match ? parseInt(match[1]) : 0;
@@ -164,6 +165,10 @@ export function switchToSlot(cwd, slot) {
     }
     // Copy slot to current session path (already sanitized, no color codes)
     writeFileSync(curPath, JSON.stringify(data, null, 2), 'utf-8');
+    // Consume the source archive — it's now the active session, so don't leave a duplicate
+    if (src !== curPath) {
+      try { unlinkSync(src); } catch { /* best-effort */ }
+    }
     return data;
   } catch {
     return null;
