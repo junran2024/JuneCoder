@@ -106,6 +106,26 @@ export function archiveCurrent(cwd) {
   } catch { /* best-effort: archiving failure is non-critical, session stays on disk */ }
 }
 
+/** Extract the first user message from a session file, truncated for display. */
+function firstUserSummary(filePath) {
+  try {
+    const raw = readFileSync(filePath, 'utf-8');
+    const data = JSON.parse(raw);
+    const history = data.history;
+    if (!Array.isArray(history)) return null;
+    for (const m of history) {
+      if (m && m.role === 'user' && typeof m.content === 'string' && m.content.trim()) {
+        const firstLine = m.content.trim().split('\n')[0].trim();
+        if (!firstLine) continue;
+        return firstLine.length > 35 ? firstLine.slice(0, 35) + '…' : firstLine;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 /** List available session slots for a given project directory. */
 export function listSlots(cwd) {
   try {
@@ -114,10 +134,13 @@ export function listSlots(cwd) {
     const files = readdirSync(dir).filter(f => f.startsWith(prefix) && f.endsWith('.json'));
     return files.map(f => {
       const match = f.match(/_(\d+)\.json$/);
+      const ts = match ? parseInt(match[1]) : 0;
+      const timeLabel = match ? new Date(ts).toLocaleString() : f;
+      const summary = firstUserSummary(join(dir, f));
       return {
         file: f,
-        timestamp: match ? parseInt(match[1]) : 0,
-        label: match ? new Date(parseInt(match[1])).toLocaleString() : f,
+        timestamp: ts,
+        label: summary ? timeLabel + ' — ' + summary : timeLabel,
       };
     }).sort((a, b) => b.timestamp - a.timestamp);
   } catch {
