@@ -61,7 +61,9 @@ const ROLES = {
 
 export function charWidth(cp) {
   if ((cp >= 0x300 && cp <= 0x36f) || (cp >= 0x200b && cp <= 0x200f) || cp === 0xfe0f) return 0;
-  if ((cp >= 0x1100 && cp <= 0x115f) || (cp >= 0x2e80 && cp <= 0xa4cf) ||
+  if ((cp >= 0x1100 && cp <= 0x115f) || (cp >= 0x2300 && cp <= 0x23ff) ||
+      (cp >= 0x2600 && cp <= 0x27bf) || (cp >= 0x2b00 && cp <= 0x2bff) ||
+      (cp >= 0x2e80 && cp <= 0xa4cf) ||
       (cp >= 0xac00 && cp <= 0xd7a3) || (cp >= 0xf900 && cp <= 0xfaff) ||
       (cp >= 0xfe30 && cp <= 0xfe4f) || (cp >= 0xff00 && cp <= 0xff60) ||
       (cp >= 0xffe0 && cp <= 0xffe6) || (cp >= 0x1f000 && cp <= 0x1faff) ||
@@ -240,7 +242,7 @@ export async function startTUI(agent, opts = {}) {
     const convH = Math.max(1, rows - 1 - inputBoxH - 1 - taskPanelH - goalH - subOutLen - permPreviewLen);
 
     const COPY_ICON = "\u2751";
-    const iconW = stringWidth(COPY_ICON); // 1
+    const iconW = stringWidth(COPY_ICON); // ❑ falls in the widened 0x2600-0x27bf range → 2 (conservative; most terminals draw it as 1, leaving a harmless gap)
     const convLines = [];
     for (let si = 0; si < state.lines.length; si++) {
       const l = state.lines[si];
@@ -338,7 +340,12 @@ export async function startTUI(agent, opts = {}) {
     let statusLine = statusText + taskHint + tokenHint + cacheHint + ctxHint + scrollHint + " \u2502 Enter:send Option+Enter:newline \u2502 /:cmds \u2502 Ctrl+C:quit";
     const autoBanner = agent.autoApprove ? C.warn + "AUTO" + ansi.reset + ansi.dim + "\u2502" : "";
     const planBanner = agent.planMode ? C.tool + "PLAN" + ansi.reset + ansi.dim + "\u2502" : "";
-    statusLine = sliceByWidth(statusLine, Math.max(10, W));
+    // statusLine may embed ANSI color codes (ctxHint when ctx >= 80%).
+    // sliceByWidth would count escape bytes as cells and could cut a sequence
+    // in half; measure visible width first and only then slice the plain text.
+    if (stringWidth(statusLine.replace(ANSI_RE, "")) > Math.max(10, W)) {
+      statusLine = sliceByWidth(statusLine.replace(ANSI_RE, ""), Math.max(10, W));
+    }
     out.push(ansi.dim + planBanner + autoBanner + (planBanner || autoBanner ? " " : "") + statusLine + ansi.reset + ansi.clearLine);
 
     const frame = out.join("\r\n");
@@ -352,7 +359,10 @@ export async function startTUI(agent, opts = {}) {
       process.stdout.write(ESC + "[" + cursorRow + ";" + cursorCol + "H" + ansi.showCursor);
     }
   }
-  process.stdout.on("resize", render);
+  // Force a full rewrite on resize: the frame will differ anyway if cols/rows
+  // changed, but if the terminal merely needs a repaint (same dims), frame
+  // dedup would otherwise swallow it.
+  process.stdout.on("resize", () => { lastFrame = ""; render(); });
 
   let lastKeyTime = 0;
   keyStream.on("keypress", (str, key) => {
@@ -426,8 +436,8 @@ export async function startTUI(agent, opts = {}) {
       submit(); return;
     }
 
-    if (key.name === "pageup") { state.scroll += (rows - 4); render(); return; }
-    if (key.name === "pagedown") { state.scroll = Math.max(0, state.scroll - (rows - 4)); render(); return; }
+    if (key.name === "pageup") { state.scroll += ((process.stdout.rows || 24) - 4); render(); return; }
+    if (key.name === "pagedown") { state.scroll = Math.max(0, state.scroll - ((process.stdout.rows || 24) - 4)); render(); return; }
     editInput(str, key);
     if (isPasteBurst) scheduleRender(); else render();
   });
