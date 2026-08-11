@@ -271,16 +271,16 @@ export async function startTUI(agent, opts = {}) {
 
     const pad = convH - visible.length;
     for (let i = 0; i < pad; i++) out.push(ansi.clearLine);
-    const COPY_ICON = " \u2751";
+    const COPY_ICON = "\u2751";
     for (let vi = 0; vi < visible.length; vi++) {
       const l = visible[vi];
-      let text = l.text;
+      let displayText = l.text;
       if (l.hasCopy) {
-        text = padByWidth(sliceByWidth(l.text, W - stringWidth(COPY_ICON)), W - stringWidth(COPY_ICON)) + COPY_ICON;
+        // Truncate text so it won't overwrite the icon; position icon at right edge via absolute column
+        displayText = sliceByWidth(l.text, W - stringWidth(COPY_ICON));
+        displayText += `${ESC}[${W}G${ESC}[23m${COPY_ICON}`;
         state._copyZones.push({ row: 1 + pad + vi + 1, col: W, blockId: l.blockId });
       }
-      // Keep copy icon non-italic even on reasoning lines (which set ESC[3m)
-      const displayText = l.hasCopy ? text.replace(COPY_ICON, `${ESC}[23m${COPY_ICON}`) : text;
       out.push(`${l.color}${displayText}${ansi.reset}${ansi.clearLine}`);
     }
 
