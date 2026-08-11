@@ -133,7 +133,7 @@ export async function startTUI(agent, opts = {}) {
     question: null, goalMode: false, goal: agent.goal ? { objective: agent.goal.objective, turn: agent.goal.turnsUsed || 0, max: agent.config?.agent?.goalTurns || 200 } : null, tasks: agent.tasks ?? [], tokens: { prompt: 0, completion: 0, total: 0, cacheHit: 0, cacheMiss: 0, totalPrompt: 0, totalCompletion: 0, totalTotal: 0 },
     reasoning: "", toolStreams: {},
     subOutput: "", currentSub: null, currentTool: null, processingStarted: 0, status: "Ready",
-    _nextBlockId: 0, _copyBlocks: new Map(), _copyZones: [],
+    _nextBlockId: 0, _copyBlocks: new Map(), _copyZones: [], _flashBlockId: null, _flashTimer: null,
   };
   if (state.tasks.length > 0 && state.tasks.every(t => t.status === "done")) state.tasks = [];
 
@@ -154,7 +154,13 @@ export async function startTUI(agent, opts = {}) {
           if (row === z.row && col >= z.col - 2 && col <= z.col) {
             const src = state.lines.find(l => l.blockId === z.blockId);
             const txt = src ? src.text : state._copyBlocks.get(z.blockId);
-            if (txt) process.stdout.write(`\x1b]52;c;${Buffer.from(txt).toString("base64")}\x07`);
+            if (txt) {
+              process.stdout.write(`\x1b]52;c;${Buffer.from(txt).toString("base64")}\x07`);
+              state._flashBlockId = z.blockId;
+              clearTimeout(state._flashTimer);
+              state._flashTimer = setTimeout(() => { state._flashBlockId = null; render(); }, 1000);
+              render();
+            }
             break;
           }
         }
@@ -283,7 +289,8 @@ export async function startTUI(agent, opts = {}) {
         // Clear to EOL *before* the absolute jump: otherwise the gap between
         // end-of-text and column W keeps stale cells from the previous frame,
         // splicing old text onto the new line.
-        out.push(`${l.color}${l.text}${ansi.reset}${ansi.clearLine}${ESC}[${W}G${ESC}[23m${COPY_ICON}${ansi.reset}`);
+        const icon = l.blockId === state._flashBlockId ? "\u2713" : COPY_ICON;
+        out.push(`${l.color}${l.text}${ansi.reset}${ansi.clearLine}${ESC}[${W}G${ESC}[23m${icon}${ansi.reset}`);
         state._copyZones.push({ row: 1 + pad + vi + 1, col: W, blockId: l.blockId });
       } else {
         out.push(`${l.color}${l.text}${ansi.reset}${ansi.clearLine}`);
@@ -705,6 +712,7 @@ export async function startTUI(agent, opts = {}) {
             state.lines = [];
             if (data.displayLines) {
               state._copyBlocks.clear(); state._nextBlockId = 0;
+              state._flashBlockId = null; clearTimeout(state._flashTimer);
               for (const raw of data.displayLines) {
                 const line = { text: String(raw.text ?? ""), role: raw.role || "text" };
                 if (typeof raw.blockId === "number") {
@@ -727,8 +735,8 @@ export async function startTUI(agent, opts = {}) {
         render();
         break;
       }
-      case "clear": archiveCurrent(agent.cwd); agent.history = []; state.lines = []; state.streaming = ""; state.reasoning = ""; state.tasks = []; agent.tasks = []; agent.goal = null; state.goal = null; state.scroll = 0; state._copyBlocks.clear(); state._nextBlockId = 0; pushLine("Cleared (archived).", "warn"); break;
-      case "new": archiveCurrent(agent.cwd); agent.history = []; state.lines = []; state.streaming = ""; state.reasoning = ""; state.toolStreams = {}; state.tasks = []; agent.tasks = []; agent.goal = null; state.goal = null; state.scroll = 0; state.tokens = { prompt: 0, completion: 0, total: 0, cacheHit: 0, cacheMiss: 0, totalPrompt: 0, totalCompletion: 0, totalTotal: 0 }; delete agent._lastTotalTokens; state._copyBlocks.clear(); state._nextBlockId = 0; pushLine("New session.", "tool"); break;
+      case "clear": archiveCurrent(agent.cwd); agent.history = []; state.lines = []; state.streaming = ""; state.reasoning = ""; state.tasks = []; agent.tasks = []; agent.goal = null; state.goal = null; state.scroll = 0; state._copyBlocks.clear(); state._nextBlockId = 0; state._flashBlockId = null; clearTimeout(state._flashTimer); pushLine("Cleared (archived).", "warn"); break;
+      case "new": archiveCurrent(agent.cwd); agent.history = []; state.lines = []; state.streaming = ""; state.reasoning = ""; state.toolStreams = {}; state.tasks = []; agent.tasks = []; agent.goal = null; state.goal = null; state.scroll = 0; state.tokens = { prompt: 0, completion: 0, total: 0, cacheHit: 0, cacheMiss: 0, totalPrompt: 0, totalCompletion: 0, totalTotal: 0 }; delete agent._lastTotalTokens; state._copyBlocks.clear(); state._nextBlockId = 0; state._flashBlockId = null; clearTimeout(state._flashTimer); pushLine("New session.", "tool"); break;
       case "tasks": if (state.tasks.length === 0) pushLine("No tasks.", "dim"); else for (const t of state.tasks) pushLine("  " + (t.status === "done" ? "\u2713" : t.status === "in_progress" ? "\u25b6" : "\u25cb") + " " + t.title, "dim"); break;
       case "stats": pushLine("Last call: \u2191" + fmtK(state.tokens.prompt) + " \u2193" + fmtK(state.tokens.completion) + " | Session total: \u2191" + fmtK(state.tokens.totalPrompt) + " \u2193" + fmtK(state.tokens.totalCompletion) + " \u2211" + fmtK(state.tokens.totalTotal) + " | History: " + agent.history.length + " msgs" + (agent._lastTotalTokens ? " (" + fmtK(agent._lastTotalTokens) + " t)" : "") + " | Lines: " + state.lines.length, "dim"); break;
       case "quit": case "exit": cleanup(); process.exit(0); return;
