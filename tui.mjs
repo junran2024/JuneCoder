@@ -279,13 +279,15 @@ export async function startTUI(agent, opts = {}) {
     for (let i = 0; i < pad; i++) out.push(ansi.clearLine);
     for (let vi = 0; vi < visible.length; vi++) {
       const l = visible[vi];
-      let displayText = l.text;
       if (l.hasCopy) {
-        // Text already wrapped to W-iconW; position icon at right edge via absolute column
-        displayText += `${ESC}[${W}G${ESC}[23m${COPY_ICON}`;
+        // Clear to EOL *before* the absolute jump: otherwise the gap between
+        // end-of-text and column W keeps stale cells from the previous frame,
+        // splicing old text onto the new line.
+        out.push(`${l.color}${l.text}${ansi.reset}${ansi.clearLine}${ESC}[${W}G${ESC}[23m${COPY_ICON}${ansi.reset}`);
         state._copyZones.push({ row: 1 + pad + vi + 1, col: W, blockId: l.blockId });
+      } else {
+        out.push(`${l.color}${l.text}${ansi.reset}${ansi.clearLine}`);
       }
-      out.push(`${l.color}${displayText}${ansi.reset}${ansi.clearLine}`);
     }
 
     for (const t of visibleTasks) {
