@@ -275,7 +275,7 @@ export async function startTUI(agent, opts = {}) {
       const l = visible[vi];
       let text = l.text;
       if (l.hasCopy) {
-        const icon = " \u2751";
+        const icon = ` ${ESC}[23m\u2751`;
         text = padByWidth(sliceByWidth(l.text, W - stringWidth(icon)), W - stringWidth(icon)) + icon;
         state._copyZones.push({ row: 1 + pad + vi + 1, col: W, blockId: l.blockId });
       }
