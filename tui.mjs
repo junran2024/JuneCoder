@@ -89,7 +89,27 @@ export function wrapText(text, width) {
   for (const rawLine of text.split("\n")) {
     if (rawLine === "") { lines.push(""); continue; }
     let line = rawLine;
-    while (stringWidth(line) > width) { const head = sliceByWidth(line, width); lines.push(head); line = line.slice([...head].length); }
+    while (stringWidth(line) > width) {
+      const head = sliceByWidth(line, width);
+      const headChars = [...head];
+      const restChars = [...line].slice(headChars.length);
+      // If we're mid-word in Latin text (both adjacent chars are [a-zA-Z0-9]),
+      // backtrack to the last space for a clean word break.
+      const prev = headChars[headChars.length - 1] ?? "";
+      const next = restChars[0] ?? "";
+      if (/[a-zA-Z0-9]/.test(prev) && /[a-zA-Z0-9]/.test(next)) {
+        const lastSpace = head.lastIndexOf(" ");
+        if (lastSpace > 0) {
+          const breakLen = [...head.slice(0, lastSpace)].length;
+          lines.push(head.slice(0, lastSpace));
+          line = line.slice(breakLen + 1); // +1 skip the space itself
+          continue;
+        }
+      }
+      // No good word break — hard break (fine for CJK, or very long Latin words)
+      lines.push(head);
+      line = line.slice(headChars.length);
+    }
     lines.push(line);
   }
   return lines;
