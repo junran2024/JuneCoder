@@ -321,8 +321,10 @@ export async function startTUI(agent, opts = {}) {
     const topBorder = "\u256d\u2500" + title + "\u2500".repeat(Math.max(0, W - 3 - stringWidth(title))) + "\u256e";
     out.push(`${borderColor}${topBorder}${ansi.reset}${ansi.clearLine}`);
     for (let i = 0; i < boxLines.length; i++) {
-      const content = padByWidth(boxLines[i], W - 4);
-      out.push(`${borderColor}\u2502${ansi.reset} ${content} ${borderColor}\u2502${ansi.reset}${ansi.clearLine}`);
+      // Use absolute cursor positioning for the right border so the box
+      // stays aligned even when charWidth overcounts ambiguous-width symbols
+      // (0x2600-0x27bf etc.).  padByWidth would under-pad and shift │ left.
+      out.push(`${borderColor}\u2502${ansi.reset} ${boxLines[i]}${ansi.clearLine}${ESC}[${W}G${borderColor}\u2502${ansi.reset}`);
     }
     const bottomBorder = "\u2570" + "\u2500".repeat(W - 2) + "\u256f";
     out.push(`${borderColor}${bottomBorder}${ansi.reset}${ansi.clearLine}`);
