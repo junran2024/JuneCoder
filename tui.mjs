@@ -189,7 +189,7 @@ export async function startTUI(agent, opts = {}) {
     }
     state.lines.push(line);
     if (state.lines.length > 5000) state.lines.splice(0, 1000);
-    render();
+    scheduleRender();
   };
   const pushLabel = (text, role) => {
     if (state.lines.length > 0) state.lines.push({ text: "", role: "dim" });
@@ -238,7 +238,7 @@ export async function startTUI(agent, opts = {}) {
     const taskPanelH = visibleTasks.length;
     const goalH = state.goal ? 1 : 0;
     const subOutLen = (state.subOutput && state.processing) ? wrapText(state.subOutput, W - 8).slice(-2).length : 0;
-    const permPreviewLen = state.permission ? 1 + state.permissionPreview.reduce((s, l) => s + wrapText("  " + l, W - 1).length, 0) : 0;
+    const permPreviewLen = state.permission ? 1 + state.permissionPreview.reduce((s, l) => s + wrapText("  " + l, W).length, 0) : 0;
     const convH = Math.max(1, rows - 1 - inputBoxH - 1 - taskPanelH - goalH - subOutLen - permPreviewLen);
 
     const COPY_ICON = "\u2751";
@@ -608,8 +608,8 @@ export async function startTUI(agent, opts = {}) {
     state.processingStarted = Date.now(); state.controller = new AbortController();
     const ticker = setInterval(() => { if (state.processing) render(); }, 1000); render();
     const callbacks = {
-      onToken: t => { ensureAssistantLabel(); if (!state.streaming && state.reasoning) { pushLine(state.reasoning, "reason", true); state.reasoning = ''; } state.streaming += t; scheduleRender(); },
-      onReasoning: t => { ensureAssistantLabel(); if (state.streaming) { pushLine(state.streaming, "text", true); state.streaming = ''; } state.reasoning += t; scheduleRender(); },
+      onToken: t => { ensureAssistantLabel(); if (!state.streaming && state.reasoning) { const r = state.reasoning; state.reasoning = ''; pushLine(r, "reason", true); } state.streaming += t; scheduleRender(); },
+      onReasoning: t => { ensureAssistantLabel(); if (state.streaming) { const s = state.streaming; state.streaming = ''; pushLine(s, "text", true); } state.reasoning += t; scheduleRender(); },
       onToolCall: (name, args) => { flushStream(); ensureAssistantLabel(); state.currentTool = name; const summary = summarize(args); pushLine("  [tool] " + name + (summary && summary !== '{}' ? " " + summary : ""), "tool"); },
       onToolResult: (name, output, error) => { state.currentTool = null; const text = error ? "Error: " + error : (output || ""); const stream = state.toolStreams[name]; if (stream) { const tail = stream.trimEnd().slice(-4000); if (tail) pushLine(tail, "dim"); delete state.toolStreams[name]; } pushLine("  [done] " + name + " \u2192 " + sliceByWidth(sanitizeDisplay(text.split("\n")[0]), 100), "dim"); },
       onToolOutput: (name, output, error) => { state.toolStreams[name] = (state.toolStreams[name] ?? "") + (error ? "Error: " + error : (output || "")); scheduleRender(); },
@@ -636,7 +636,7 @@ export async function startTUI(agent, opts = {}) {
     try { saveSession(agent, state.lines); } catch { /* final save best-effort — render must run regardless */ } render();
   }
 
-  function flushStream() { if (state.reasoning) { pushLine(state.reasoning, "reason", true); state.reasoning = ""; } if (state.streaming) { pushLine(state.streaming, "text", true); state.streaming = ""; } }
+  function flushStream() { if (state.reasoning) { const r = state.reasoning; state.reasoning = ""; pushLine(r, "reason", true); } if (state.streaming) { const s = state.streaming; state.streaming = ""; pushLine(s, "text", true); } }
   function askPermission(name, args) { if (agent.autoApprove) { pushLine("  [auto] " + name + " " + summarize(args), "warn"); return Promise.resolve({ allowed: true }); } state.permissionPreview = formatPermission(name, args); return new Promise(resolve => { state.permission = { name, args, resolve, reasonMode: false }; state.status = "Waiting: " + name; render(); }); }
   function askQuestion(text) { if (state.question) return Promise.resolve("(already waiting)"); pushLabel("\u276f Question", "labelTool"); for (const line of text.split("\n")) pushLine("  " + line, "text"); return new Promise(resolve => { state.question = { text, options: [], resolve }; state.status = "Waiting..."; render(); }); }
 
