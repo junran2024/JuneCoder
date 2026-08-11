@@ -310,7 +310,7 @@ export async function startTUI(agent, opts = {}) {
         // end-of-text and column W keeps stale cells from the previous frame,
         // splicing old text onto the new line.
         const icon = l.blockId === state._flashBlockId ? "\u2713" : COPY_ICON;
-        out.push(`${l.color}${l.text}${ansi.reset}${ansi.clearLine}${ESC}[${W}G${ESC}[23m${icon}${ansi.reset}`);
+        out.push(`${l.color}${l.text}${ansi.reset}${ansi.clearLine}${ESC}[${W}G${_isDarkBg ? `${ESC}[38;5;250m${ESC}[2m` : `${ESC}[2m`}${icon}${ansi.reset}`);
         state._copyZones.push({ row: 1 + pad + vi + 1, col: W, blockId: l.blockId });
       } else {
         out.push(`${l.color}${l.text}${ansi.reset}${ansi.clearLine}`);
