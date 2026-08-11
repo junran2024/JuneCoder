@@ -249,7 +249,7 @@ export async function startTUI(agent, opts = {}) {
     const allStreams = Object.values(state.toolStreams).join("");
     if (allStreams) { const tail = sanitizeDisplay(allStreams.slice(-4000)); for (const wrapped of wrapText(tail, W)) convLines.push({ text: wrapped, color: C.dim }); }
 
-    // Mark last wrapped line of each copyable block with ⧉ icon
+    // Mark last wrapped line of each copyable block with ❐ icon
     for (let ci = 0; ci < convLines.length; ci++) {
       const si = convLines[ci]._si;
       if (si == null) continue;
@@ -275,7 +275,7 @@ export async function startTUI(agent, opts = {}) {
       const l = visible[vi];
       let text = l.text;
       if (l.hasCopy) {
-        const icon = " \u29c9";
+        const icon = " \u2750";
         text = padByWidth(sliceByWidth(l.text, W - stringWidth(icon)), W - stringWidth(icon)) + icon;
         state._copyZones.push({ row: 1 + pad + vi + 1, col: W, blockId: l.blockId });
       }
