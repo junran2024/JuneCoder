@@ -239,10 +239,14 @@ export async function startTUI(agent, opts = {}) {
     const permPreviewLen = state.permission ? 1 + state.permissionPreview.reduce((s, l) => s + wrapText("  " + l, W - 1).length, 0) : 0;
     const convH = Math.max(1, rows - 1 - inputBoxH - 1 - taskPanelH - goalH - subOutLen - permPreviewLen);
 
+    const COPY_ICON = "\u2751";
+    const iconW = stringWidth(COPY_ICON); // 1
     const convLines = [];
     for (let si = 0; si < state.lines.length; si++) {
       const l = state.lines[si];
-      for (const wrapped of wrapText(sanitizeDisplay(l.text), W)) convLines.push({ text: wrapped, color: ROLES[l.role] || C.text, _si: si });
+      // For copyable lines, reserve one column so the icon never eats a character
+      const wrapW = l.blockId ? W - iconW : W;
+      for (const wrapped of wrapText(sanitizeDisplay(l.text), wrapW)) convLines.push({ text: wrapped, color: ROLES[l.role] || C.text, _si: si });
     }
     if (state.reasoning) { for (const wrapped of wrapText(sanitizeDisplay(state.reasoning), W)) convLines.push({ text: wrapped, color: C.reason }); }
     if (state.streaming) { for (const wrapped of wrapText(sanitizeDisplay(state.streaming), W)) convLines.push({ text: wrapped, color: C.text }); }
@@ -271,13 +275,11 @@ export async function startTUI(agent, opts = {}) {
 
     const pad = convH - visible.length;
     for (let i = 0; i < pad; i++) out.push(ansi.clearLine);
-    const COPY_ICON = "\u2751";
     for (let vi = 0; vi < visible.length; vi++) {
       const l = visible[vi];
       let displayText = l.text;
       if (l.hasCopy) {
-        // Truncate text so it won't overwrite the icon; position icon at right edge via absolute column
-        displayText = sliceByWidth(l.text, W - stringWidth(COPY_ICON));
+        // Text already wrapped to W-iconW; position icon at right edge via absolute column
         displayText += `${ESC}[${W}G${ESC}[23m${COPY_ICON}`;
         state._copyZones.push({ row: 1 + pad + vi + 1, col: W, blockId: l.blockId });
       }
