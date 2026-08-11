@@ -65,7 +65,7 @@ export function charWidth(cp) {
       (cp >= 0xac00 && cp <= 0xd7a3) || (cp >= 0xf900 && cp <= 0xfaff) ||
       (cp >= 0xfe30 && cp <= 0xfe4f) || (cp >= 0xff00 && cp <= 0xff60) ||
       (cp >= 0xffe0 && cp <= 0xffe6) || (cp >= 0x1f000 && cp <= 0x1faff) ||
-      (cp >= 0x20000 && cp <= 0x3fffd) || (cp >= 0x2600 && cp <= 0x27bf)) return 2;
+      (cp >= 0x20000 && cp <= 0x3fffd)) return 2;
   return 1;
 }
 export function stringWidth(text) { let w = 0; for (const ch of text) w += charWidth(ch.codePointAt(0)); return w; }
