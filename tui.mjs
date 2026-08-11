@@ -271,15 +271,17 @@ export async function startTUI(agent, opts = {}) {
 
     const pad = convH - visible.length;
     for (let i = 0; i < pad; i++) out.push(ansi.clearLine);
+    const COPY_ICON = " \u2751";
     for (let vi = 0; vi < visible.length; vi++) {
       const l = visible[vi];
       let text = l.text;
       if (l.hasCopy) {
-        const icon = ` ${ESC}[23m\u2751`;
-        text = padByWidth(sliceByWidth(l.text, W - stringWidth(icon)), W - stringWidth(icon)) + icon;
+        text = padByWidth(sliceByWidth(l.text, W - stringWidth(COPY_ICON)), W - stringWidth(COPY_ICON)) + COPY_ICON;
         state._copyZones.push({ row: 1 + pad + vi + 1, col: W, blockId: l.blockId });
       }
-      out.push(`${l.color}${text}${ansi.reset}${ansi.clearLine}`);
+      // Keep copy icon non-italic even on reasoning lines (which set ESC[3m)
+      const displayText = l.hasCopy ? text.replace(COPY_ICON, `${ESC}[23m${COPY_ICON}`) : text;
+      out.push(`${l.color}${displayText}${ansi.reset}${ansi.clearLine}`);
     }
 
     for (const t of visibleTasks) {
