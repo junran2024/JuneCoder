@@ -688,8 +688,15 @@ export async function startTUI(agent, opts = {}) {
             agent.history = data.history || [];
             state.lines = [];
             if (data.displayLines) {
+              state._copyBlocks.clear(); state._nextBlockId = 0;
               for (const raw of data.displayLines) {
-                state.lines.push({ text: String(raw.text ?? ""), role: raw.role || "text" });
+                const line = { text: String(raw.text ?? ""), role: raw.role || "text" };
+                if (typeof raw.blockId === "number") {
+                  line.blockId = raw.blockId;
+                  state._copyBlocks.set(raw.blockId, line.text);
+                  if (raw.blockId >= state._nextBlockId) state._nextBlockId = raw.blockId;
+                }
+                state.lines.push(line);
               }
             }
             if (data.goal) agent.goal = data.goal;
@@ -717,7 +724,13 @@ export async function startTUI(agent, opts = {}) {
   const restored = opts.restored;
   if (restored && restored.displayLines) {
     for (const raw of restored.displayLines) {
-      state.lines.push({ text: String(raw.text ?? ""), role: raw.role || "text" });
+      const line = { text: String(raw.text ?? ""), role: raw.role || "text" };
+      if (typeof raw.blockId === "number") {
+        line.blockId = raw.blockId;
+        state._copyBlocks.set(raw.blockId, line.text);
+        if (raw.blockId >= state._nextBlockId) state._nextBlockId = raw.blockId;
+      }
+      state.lines.push(line);
     }
     if (restored.history) agent.history = restored.history;
     if (restored.goal) agent.goal = restored.goal;

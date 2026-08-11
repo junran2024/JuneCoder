@@ -38,7 +38,9 @@ export function normalizeLines(lines) {
   for (const l of lines) {
     if (typeof l === "string") out.push({ text: stripAnsi(l), role: "text" });
     else if (l && typeof l.text === "string") {
-      out.push({ text: stripAnsi(l.text), role: typeof l.role === "string" ? l.role : "text" });
+      const line = { text: stripAnsi(l.text), role: typeof l.role === "string" ? l.role : "text" };
+      if (typeof l.blockId === "number") line.blockId = l.blockId;
+      out.push(line);
     }
   }
   return out;
